@@ -97,3 +97,60 @@ tier "light" cannot run 2 replicas: above one replica the pods must form an
 Erlang cluster, or conversation streaming breaks for whichever pod did not
 spawn the conversation. Use tier "ha".
 ```
+
+## `target=kubernetes`, and what it takes
+
+The two targets differ on four of six seam defaults, so most of what `kubernetes`
+does is not what `k3d` exercises:
+
+| seam | `k3d` | `kubernetes` |
+|---|---|---|
+| `postgres` | `bundled` | `reference` |
+| `ingress` | `omit` | `ingress` |
+| `backups` | `pg-dump` | `omit` |
+| `dataPlane` | `spritzer` | `sprites` |
+
+Applying it turned up two things that had never run, both of which applied
+cleanly and did nothing useful.
+
+### `DATABASE_SSL` was derived, not settable
+
+`postgres=reference` set it to `true` unconditionally — "anything you did not
+create serves TLS". That is true of a managed cloud database and false of the
+perfectly ordinary case `reference` exists for: a Postgres somebody else
+operates in your cluster. Against one, the app crashloops on boot:
+
+```
+[error] Postgrex.Protocol failed to connect: ** (Postgrex.Error) ssl not available
+```
+
+and no parameter could say otherwise. It is now `--param databaseSsl=false`,
+still defaulting to `true` for anything but the bundled Postgres.
+
+### An Ingress with no class is claimed by nobody
+
+`ingressClassName` had no default, so the Ingress carried no class. A cluster
+with a default `IngressClass` picks it up; a cluster with two controllers and no
+default ignores it — and the second is normal. Tested against a cluster running
+both Traefik (k3s ships it) and nginx: the Ingress applied without complaint and
+404ed every request.
+
+That is the same shape as the other refusals, so it is one now:
+
+```
+ingress="ingress" needs ingressClassName — an Ingress with no class is claimed by
+no controller unless the cluster happens to have a default one, and applies
+cleanly either way.
+```
+
+### The stream timeout was conditional on https
+
+`proxy-read-timeout: 3600` only emitted when `scheme=https`. fountain streams a
+conversation over SSE and holds the connection open for up to 60s between
+events; nginx's own default read timeout is also 60s, so a plain-http ingress cut
+long streams at exactly the boundary where they are most likely to be waiting.
+The scheme has nothing to do with how long a stream lives, so it is unconditional
+now.
+
+`force-ssl-redirect` really is https-only — forcing a redirect to a scheme
+nothing terminates is a loop.

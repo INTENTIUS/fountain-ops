@@ -24,15 +24,26 @@ export const ingress =
           name: "fountain",
           namespace,
           labels,
-          annotations: httpsPublicUrl
-            ? {
-                // Nothing here is universal — every controller spells this
-                // differently. The contract is in the doc comment above; these
-                // are the nginx spellings as a starting point.
-                "nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
-                "nginx.ingress.kubernetes.io/proxy-read-timeout": "3600",
-              }
-            : undefined,
+          // Nothing here is universal — every controller spells this
+          // differently. The contract is in the doc comment above; these are
+          // the nginx spellings.
+          //
+          // proxy-read-timeout is NOT conditional on https, and used to be.
+          // fountain streams a conversation over SSE and holds the connection
+          // open for up to 60s between events; nginx's default read timeout is
+          // also 60s, so a plain-http ingress cut long streams at exactly the
+          // boundary where they are most likely to be waiting. The scheme has
+          // nothing to do with how long a stream lives.
+          //
+          // undefined rather than a conditional spread, which is EVL004 — the
+          // serializer omits undefined properties, and this file already said
+          // so about ingressClassName below before I did it anyway.
+          annotations: {
+            "nginx.ingress.kubernetes.io/proxy-read-timeout": "3600",
+            // This one really is https-only: forcing a redirect to a scheme
+            // nothing terminates is a loop.
+            "nginx.ingress.kubernetes.io/force-ssl-redirect": httpsPublicUrl ? "true" : undefined,
+          },
         },
         spec: {
           // undefined rather than a conditional spread: the serializer omits

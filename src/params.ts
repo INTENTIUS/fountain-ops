@@ -13,7 +13,7 @@
 import { params } from "@intentius/chant/params";
 import { resolveTier, sizeShape, defaultSize, type Tier, type Size } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
-import { resolveSeams, assertSixFieldSchedule, type Seams } from "./lib/seams";
+import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
@@ -105,9 +105,30 @@ export const emailDelivery = (params.emailDelivery as string | undefined) ?? "no
  * are the operator's to supply; this repo does not model them.
  */
 export const otelTraces = (params.otelTraces as string | undefined) ?? "none";
+/**
+ * Whether the database connection requires TLS.
+ *
+ * Derived by default and settable, which it was not: the bundled Postgres
+ * serves no TLS so it must be false there, and everything else was *assumed*
+ * to. A referenced Postgres that does not serve TLS then crashloops on boot
+ * with
+ *
+ *   (Postgrex.Error) ssl not available
+ *
+ * and no parameter could say otherwise. "Anything you did not create serves
+ * TLS" is true of a managed cloud database and false of the perfectly ordinary
+ * case of an in-cluster Postgres somebody else operates — which is exactly what
+ * `reference` is for.
+ *
+ * CNPG serves TLS, so it keeps the same default as before.
+ */
+export const databaseSsl =
+  (params.databaseSsl as string | undefined) ?? (seams.postgres === "bundled" ? "false" : "true");
+
 export const registrationEnabled = (params.registrationEnabled as string | undefined) ?? "true";
 export const clusterIssuer = (params.clusterIssuer as string | undefined) ?? "letsencrypt-production";
 export const ingressClassName = params.ingressClassName as string | undefined;
+assertIngressClass(seams, ingressClassName);
 export const pgStorageSize = (params.pgStorageSize as string | undefined) ?? "10Gi";
 export const pgImage = (params.pgImage as string | undefined) ?? "postgres:16";
 export const backupSchedule = (params.backupSchedule as string | undefined) ?? "17 3 * * *";

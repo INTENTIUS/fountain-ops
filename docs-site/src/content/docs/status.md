@@ -17,6 +17,7 @@ Stood up and exercised, not reasoned about.
 | Registering and signing in | Registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated — the fountain skill and a `/home/sprite/.env` written into its filesystem |
 | `pg-dump` → floci | **Taken and restored.** The CronJob dumps, uploads and size-verifies; `just restore-drill` restores the newest object into a throwaway database, matches its table count against live, and drops it. Non-destructive — the live database is untouched and only `fountain` remains afterwards |
+| `target=kubernetes` on k3d | **Applied and served.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. Not yet applied to a **managed** cluster — [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
 | `postgres=cnpg` | **The operator reconciles a real database.** `just operators`, then `postgres=cnpg`: CNPG reports `Cluster in healthy state`, fountain migrates 23 tables into it, and `/health/ready` answers `{"database":"ok"}` |
 | `k3d` + `tier=ha` | **Stands up.** Two app replicas that form an Erlang cluster (libcluster logs the connect, and there are no failures between the live pods), backed by a CNPG cluster at 2/2 ready. Serves `/health/ready` |
 
@@ -31,7 +32,6 @@ Stood up and exercised, not reasoned about.
 
 | | |
 |---|---|
-| `target=kubernetes` | Never applied to a real cluster. `postgres=reference` has never connected to anything — [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
 | `monitoring=prometheus-operator` | Builds only. Emitted nothing at all until the `tier.metrics` fix |
 | `backups=barman-pitr` | The `ObjectStore` and `ScheduledBackup` apply and the barman plugin is running after `just operators`, but **no backup has been taken or restored through it** |
 | `tls=cert-manager` (issuance) | cert-manager installs and is Available, but no certificate has been issued — a local cluster has no domain to issue against |

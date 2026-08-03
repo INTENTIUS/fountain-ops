@@ -651,8 +651,8 @@ restore-drill: _require-cluster
     echo "    key it was written under — see \`just master-key\`."
 
 # What the deployment would look like elsewhere, without applying anything.
-preview target="kubernetes" tier="ha":
-    npx chant build src --format yaml --param target={{target}} --param tier={{tier}}
+preview target="kubernetes" tier="ha" class="nginx":
+    npx chant build src --format yaml --param target={{target}} --param tier={{tier}} --param ingressClassName={{class}}
 
 # Ask a real API server whether it would accept the output.
 dry-run *ARGS: _require-cluster

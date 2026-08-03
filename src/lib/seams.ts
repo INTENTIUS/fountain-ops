@@ -168,3 +168,26 @@ export function assertSixFieldSchedule(schedule: string): void {
       `Prefix the seconds: "0 47 2 * * *".`,
   );
 }
+
+/**
+ * An Ingress no controller claims applies cleanly and does nothing.
+ *
+ * `ingressClassName` is how a controller decides an Ingress is its to serve.
+ * With it unset, a cluster that has a default IngressClass will quietly pick
+ * one up and a cluster that does not will ignore it — and the second is the
+ * normal case anywhere more than one controller is installed. k3s ships Traefik
+ * and this repo was tested against nginx: two classes, no default, and an
+ * Ingress that applied without complaint and 404ed every request.
+ *
+ * That is the same failure the other refusals here exist for: it applies
+ * cleanly and means something other than it says.
+ */
+export function assertIngressClass(s: Seams, ingressClassName?: string): void {
+  if (s.ingress !== "ingress") return;
+  if (ingressClassName) return;
+  throw new Error(
+    `ingress="ingress" needs ingressClassName — an Ingress with no class is claimed by no controller unless the cluster ` +
+      `happens to have a default one, and applies cleanly either way. Set --param ingressClassName=nginx (or traefik, or ` +
+      `whatever \`kubectl get ingressclass\` lists), or use ingress="omit".`,
+  );
+}

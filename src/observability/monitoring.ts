@@ -1,7 +1,13 @@
 import { ServiceMonitor, PrometheusRule } from "@intentius/chant-lexicon-k8s";
-import { namespace, seams, tier, labels } from "../params";
+import { namespace, seams, labels } from "../params";
 
-const on = seams.monitoring === "prometheus-operator" && tier.metrics;
+// The seam decides, and only the seam. `tier.metrics` used to be ANDed in
+// here; TierShape has no such field, so this was always undefined and
+// monitoring="prometheus-operator" emitted nothing at all, even when set
+// explicitly. Gating it on the tier would have been wrong anyway — a tier is
+// durability, never features, so "light" is a smaller fountain and not a
+// blinder one.
+const on = seams.monitoring === "prometheus-operator";
 
 /** Scrapes the metrics port on the Service. Selects the label the Service carries. */
 export const serviceMonitor = on

@@ -91,8 +91,16 @@ lint:
 test:
     npx vitest run
 
-# Build, lint and test without touching a cluster.
-check: lint test build
+# Does the source typecheck against the lexicon's own types?
+#
+# Worth its own step: `chant build` executes the source, so a property that
+# does not exist reads as undefined rather than failing. That is how
+# monitoring="prometheus-operator" emitted nothing for as long as it did.
+typecheck:
+    npx tsc --noEmit -p tsconfig.json
+
+# Build, typecheck, lint and test without touching a cluster.
+check: typecheck lint test build
 
 apply: build
     kubectl apply -f dist/fountain.yaml

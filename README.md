@@ -100,7 +100,7 @@ Each dependency has a mode. The target picks defaults that are coherent on that 
 | `target=kubernetes` | **Builds only.** Never applied to a real cluster |
 | `tier=standard`, `tier=ha` | **Builds only.** The clustering wiring is emitted and unexercised |
 | `tls=cert-manager` | **Builds only** |
-| `monitoring=prometheus-operator` | **Builds only** |
+| `monitoring=prometheus-operator` | **Builds only.** Emitted nothing at all until the `tier.metrics` fix |
 | `postgres=cnpg`, `ingress=traefik`, `secrets=infisical` | **Refused at build.** Blocked on chant CRD work |
 | `ops/` | **Empty.** No Ops exist yet |
 

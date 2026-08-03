@@ -32,7 +32,6 @@ Stood up and exercised, not reasoned about.
 | | |
 |---|---|
 | `target=kubernetes` | Never applied to a real cluster. `postgres=reference` has never connected to anything — [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
-| `tier=standard` | Emits the same deployment as `light` — [#21](https://github.com/INTENTIUS/fountain-ops/issues/21) |
 | `monitoring=prometheus-operator` | Builds only. Emitted nothing at all until the `tier.metrics` fix |
 | `backups=barman-pitr` | The `ObjectStore` and `ScheduledBackup` apply and the barman plugin is running after `just operators`, but **no backup has been taken or restored through it** |
 | `tls=cert-manager` (issuance) | cert-manager installs and is Available, but no certificate has been issued — a local cluster has no domain to issue against |

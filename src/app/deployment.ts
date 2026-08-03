@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, seams, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -117,8 +117,8 @@ export const deployment = new Deployment({
               capabilities: { drop: ["ALL"] },
             },
             resources: {
-              requests: { cpu: tier.resources.cpu, memory: tier.resources.memory },
-              limits: { cpu: tier.resources.cpuLimit, memory: tier.resources.memoryLimit },
+              requests: { cpu: size.cpu, memory: size.memory },
+              limits: { cpu: size.cpuLimit, memory: size.memoryLimit },
             },
             startupProbe: new Probe({
               httpGet: { path: "/health", port: 4000 },

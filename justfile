@@ -651,7 +651,7 @@ restore-drill: _require-cluster
     echo "    key it was written under — see \`just master-key\`."
 
 # What the deployment would look like elsewhere, without applying anything.
-preview target="kubernetes" tier="standard":
+preview target="kubernetes" tier="ha":
     npx chant build src --format yaml --param target={{target}} --param tier={{tier}}
 
 # Ask a real API server whether it would accept the output.

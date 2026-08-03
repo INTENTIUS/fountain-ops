@@ -9,14 +9,56 @@ questions, so a tier does not imply a target or the reverse.
 | | |
 |---|---|
 | `target` | `k3d` · `kubernetes` |
-| `tier` | `light` · `standard` · `ha` |
+| `tier` | `light` · `ha` |
+| `size` | `small` · `medium` · `large` — resources only, orthogonal to both |
 
 A tier scales the deployment; it never changes what fountain can do. `light` is
 not a cut-down fountain, it is a smaller one.
 
+## There used to be three
+
+`standard` sat between them and emitted a deployment identical to `light` — same
+kinds, same replica count, the same absence of clustering. The only differences
+were resource requests and backup retention.
+
+A bigger single pod is not a more durable one. It survives exactly the same set
+of failures, which is none of them, so the middle rung held nothing — and
+someone picking it believed they had bought something between `light` and `ha`.
+They had bought RAM.
+
+Sizing is now its own parameter, which is what it always was:
+
+```bash
+just params="--param size=medium" up                          # what `standard` asked for
+just params="--param tier=light --param size=large" up
+```
+
+`size` defaults to what each tier already carried, so nothing shrank. A test
+asserts every tier differs from every other in *shape* rather than only in
+size — if that fails again, the ladder has grown an empty rung.
+
+## The PodDisruptionBudget
+
+`ha` emits one; `light` does not, and that is deliberate rather than an
+omission. chant's own post-synth check had been reporting the absence at `ha`
+for as long as the tier existed:
+
+```
+Deployment "fountain" has 2 replicas but no PodDisruptionBudget
+```
+
+Without one, a node drain can take both replicas at once — `maxUnavailable: 0`
+constrains a *rollout*, and an eviction is not a rollout.
+
+At one replica a PDB is not a smaller safeguard but a worse thing:
+`minAvailable: 1` over a single pod means no voluntary eviction can ever
+succeed, so `kubectl drain` hangs and the fix is deleting the object that was
+supposed to protect you. A single-replica deployment has no availability to
+budget.
+
 ## Separate is not a free grid
 
-Five of the six combinations build. `k3d` + `ha` is refused, because two of
+Three of the four combinations build. `k3d` + `ha` is refused, because two of
 k3d's defaults are single-pod stand-ins and neither can carry an HA deployment:
 the bundled Postgres, and the emulated data plane.
 

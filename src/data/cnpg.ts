@@ -1,6 +1,7 @@
 import { Cluster, ObjectStore, ScheduledBackup } from "@intentius/chant-lexicon-k8s";
 import {
   namespace,
+  size,
   seams,
   tier,
   pgLabels,
@@ -60,7 +61,7 @@ export const objectStore =
 /**
  * The Postgres cluster.
  *
- * `instances` follows the tier: one at light and standard, two at ha. CNPG
+ * `instances` follows the tier: one at light, two at ha. CNPG
  * replicates and fails over between them, which is the thing a bundled
  * Postgres cannot do at any replica count.
  */
@@ -100,8 +101,8 @@ export const pgCluster =
           // No CPU limit, deliberately: a limit throttles a database, and the
           // pause lands on whatever query held the lock.
           resources: {
-            requests: { cpu: tier.resources.cpu, memory: tier.resources.memory },
-            limits: { memory: tier.resources.memoryLimit },
+            requests: { cpu: size.cpu, memory: size.memory },
+            limits: { memory: size.memoryLimit },
           },
         },
       })

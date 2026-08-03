@@ -11,7 +11,7 @@
  */
 
 import { params } from "@intentius/chant/params";
-import { resolveTier, type Tier } from "./lib/tiers";
+import { resolveTier, sizeShape, defaultSize, type Tier, type Size } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
 import { resolveSeams, assertSixFieldSchedule, type Seams } from "./lib/seams";
 
@@ -56,6 +56,17 @@ export const targetName = (params.target as Target | undefined) ?? "k3d";
 export const target = targetShape(targetName);
 export const tierName = (params.tier as Tier | undefined) ?? "light";
 export const tier = resolveTier(tierName, params.replicas as number | undefined);
+
+/**
+ * How much of the machine to ask for. Orthogonal to the tier, which is the
+ * whole point of it existing — it used to be half of what a tier meant, and a
+ * bigger single pod is not a more durable one.
+ *
+ * Defaults to what the tier would have carried, so nothing shrank when the
+ * middle tier went away.
+ */
+export const sizeName = (params.size as Size | undefined) ?? defaultSize(tierName);
+export const size = sizeShape(sizeName);
 
 /**
  * Seams start from the target's defaults — what is coherent on that substrate —

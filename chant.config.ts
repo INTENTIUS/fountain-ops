@@ -7,7 +7,8 @@ import type { K8sChantConfig } from "@intentius/chant-lexicon-k8s";
  * Two axes decide what this project emits:
  *
  *   target — where the substrate runs (k3d / kubernetes)
- *   tier   — how durable it is (light / standard / ha)
+ *   tier   — how durable it is (light / ha)
+ *   size   — how much of the machine it asks for (small / medium / large)
  *   seams  — who provides each dependency (postgres, secrets, ingress, tls, backups, metrics)
  *
  * They are separate questions: a tier does not imply a target, or the reverse.
@@ -102,7 +103,7 @@ export default {
       // "consider at least 2 replicas for high availability" asks for the one
       // thing this repo refuses to let you do. The replica count comes from
       // the tier, and above one replica fountain's pods must form an Erlang
-      // cluster — so resolveTier makes two replicas at light or standard a
+      // cluster — so resolveTier makes two replicas at light a
       // build error, and the bundled Postgres is a single instance by
       // definition. At tier=ha the count is already 2 and the rule is silent.
       // A warning nobody can act on trains people to ignore warnings.
@@ -143,11 +144,15 @@ export default {
     //        its replica count requires — see src/lib/tiers.ts.
     tier: {
       type: "string",
-      enum: ["light", "standard", "ha"],
+      enum: ["light", "ha"],
       default: "light",
       env: "FOUNTAIN_TIER",
     },
     replicas: { type: "number", required: false },
+    // Resources, and nothing else. Not a tier: it changes no shape, refuses no
+    // combination and survives no additional failure. Unset takes what the
+    // tier would have carried — see src/lib/tiers.ts.
+    size: { type: "string", enum: ["small", "medium", "large"], required: false },
 
     // ── seams ─────────────────────────────────────────────────────────────
     // Unset means "take the target's default" — see src/lib/tiers.ts. Setting one

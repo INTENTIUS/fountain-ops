@@ -22,7 +22,7 @@ import type { ChantConfig } from "@intentius/chant";
 const env = process.env.FOUNTAIN_ENV ?? "dev";
 
 export default {
-  lexicons: ["k8s", "temporal"],
+  lexicons: ["k8s", "temporal", "github"],
 
   // Whole-project discovery (bare `chant lifecycle diff|snapshot`) stays inside
   // src/ so it never walks ops/ or test/ fixtures. Per-stack builds pass their

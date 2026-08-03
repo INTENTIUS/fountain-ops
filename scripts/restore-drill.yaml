@@ -1,0 +1,110 @@
+# The restore drill, as a Job.
+#
+# Two containers for the same reason the backup CronJob has two: the object
+# store is reachable from the aws image and Postgres from the postgres one, and
+# nothing needs a picture with both. `fetch` pulls the newest dump onto a shared
+# emptyDir; `restore` loads it into a throwaway database and counts what came
+# back.
+#
+# `just restore-drill` substitutes __NS__, __DRILL_DB__ and __SECRET__ and drops
+# the throwaway afterwards, pass or fail. Nothing here writes to the live
+# database: the throwaway is a separate database on the same server.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: __JOB__
+  namespace: __NS__
+spec:
+  # One attempt. A retry would restore into a database the previous attempt
+  # already created, and the second failure would be about that instead of
+  # about the backup.
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: 2Gi
+      initContainers:
+        - name: fetch
+          image: amazon/aws-cli:2.31.19
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              ENDPOINT_ARGS=""
+              if [ -n "${S3_ENDPOINT:-}" ]; then ENDPOINT_ARGS="--endpoint-url ${S3_ENDPOINT}"; fi
+              if [ "${S3_FORCE_PATH_STYLE:-false}" = "true" ]; then
+                printf '[default]\ns3 =\n    addressing_style = path\n' > /work/aws-config
+                export AWS_CONFIG_FILE=/work/aws-config
+              fi
+              # The newest object, not a name this script guessed. Restoring
+              # anything other than the latest backup would pass a drill that
+              # proves nothing about what you would actually reach for.
+              # `|| true`, because sort_by() raises on an absent Contents
+              # rather than returning nothing, and an empty bucket is a
+              # finding this script should word itself.
+              KEY=$(aws $ENDPOINT_ARGS s3api list-objects-v2 --bucket "$BUCKET" \
+                --prefix pg_dump/ --query 'sort_by(Contents,&LastModified)[-1].Key' \
+                --output text 2>/dev/null || true)
+              if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
+                echo "DRILL_FAIL: no backup object under pg_dump/ in $BUCKET"
+                exit 1
+              fi
+              echo "DRILL_KEY=$KEY"
+              aws $ENDPOINT_ARGS s3 cp --no-progress "s3://$BUCKET/$KEY" /work/restore.dump
+          env:
+            - name: S3_ENDPOINT
+              value: __S3_ENDPOINT__
+            - name: BUCKET
+              value: __BUCKET__
+            - name: S3_FORCE_PATH_STYLE
+              value: "__PATH_STYLE__"
+          envFrom:
+            - secretRef:
+                name: __SECRET__
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          securityContext:
+            capabilities:
+              drop: ["ALL"]
+            allowPrivilegeEscalation: false
+      containers:
+        - name: restore
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              # A separate database on the same server. pg_restore into the
+              # live one would be the opposite of a non-destructive drill.
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$DRILL_DB\""
+              TARGET="${DATABASE_URL%%\?*}"
+              TARGET="${TARGET%/*}/$DRILL_DB"
+              pg_restore --no-owner --no-privileges --dbname "$TARGET" /work/restore.dump
+              N=$(psql "$TARGET" -tAc \
+                "select count(*) from information_schema.tables where table_schema='public'")
+              echo "DRILL_RESTORED_TABLES=$N"
+          env:
+            - name: DRILL_DB
+              value: __DRILL_DB__
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: __SECRET__
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          securityContext:
+            capabilities:
+              drop: ["ALL"]
+            allowPrivilegeEscalation: false

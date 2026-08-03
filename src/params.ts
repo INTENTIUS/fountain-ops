@@ -36,13 +36,17 @@ export const tier = resolveTier(
   params.replicas as number | undefined,
 );
 
-export const seams: Seams = resolveSeams({
-  postgres: (params.postgres as Seams["postgres"] | undefined) ?? "reference",
-  secrets: (params.secrets as Seams["secrets"] | undefined) ?? "reference",
-  ingress: (params.ingress as Seams["ingress"] | undefined) ?? "ingress",
-  tls: (params.tls as Seams["tls"] | undefined) ?? "omit",
-  backups: (params.backups as Seams["backups"] | undefined) ?? "omit",
-  monitoring: (params.monitoring as Seams["monitoring"] | undefined) ?? "omit",
+/**
+ * Seams start from the tier's profile; anything passed explicitly replaces
+ * exactly that one and leaves the rest of the profile intact.
+ */
+export const seams: Seams = resolveSeams(tier.seams, {
+  postgres: params.postgres as Seams["postgres"] | undefined,
+  secrets: params.secrets as Seams["secrets"] | undefined,
+  ingress: params.ingress as Seams["ingress"] | undefined,
+  tls: params.tls as Seams["tls"] | undefined,
+  backups: params.backups as Seams["backups"] | undefined,
+  monitoring: params.monitoring as Seams["monitoring"] | undefined,
 });
 
 // ── seam inputs ────────────────────────────────────────────────────────────
@@ -54,7 +58,11 @@ export const pgStorageSize = (params.pgStorageSize as string | undefined) ?? "10
 export const backupSchedule = (params.backupSchedule as string | undefined) ?? "17 3 * * *";
 export const backupRetentionDays = (params.backupRetentionDays as number | undefined) ?? 14;
 export const backupBucket = params.backupBucket as string | undefined;
-export const backupS3Endpoint = params.backupS3Endpoint as string | undefined;
+// The local tier points at floci by default — floci speaks S3, so the backup
+// path runs for real against an emulated bucket instead of being the part
+// nobody exercises until a restore.
+export const backupS3Endpoint =
+  (params.backupS3Endpoint as string | undefined) ?? (tier.emulated ? "http://localhost:4566" : undefined);
 
 /** Labels every resource carries, so a human and `--owned` agree on what this is. */
 export const labels = {

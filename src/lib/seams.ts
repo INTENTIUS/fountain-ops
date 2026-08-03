@@ -57,12 +57,33 @@ export interface Seams {
   monitoring: MonitoringMode;
 }
 
+/** Explicit seam choices — anything left undefined falls to the tier's default. */
+export interface SeamOverrides {
+  postgres?: PostgresMode;
+  secrets?: SecretsMode;
+  ingress?: IngressMode;
+  tls?: TlsMode;
+  backups?: BackupsMode;
+  monitoring?: MonitoringMode;
+}
+
 /**
- * Validate the seam set as a whole. Individual modes are checked for CRD
- * availability; the combinations that cannot mean anything together are
- * rejected here rather than emitting something incoherent.
+ * Layer explicit choices over the tier's defaults, then validate the result.
+ *
+ * The tier picks a coherent starting point; an override replaces exactly one
+ * seam and leaves the rest alone. Validation runs on the merged set, so an
+ * override that breaks a combination is caught the same as an authored one.
  */
-export function resolveSeams(s: Seams): Seams {
+export function resolveSeams(defaults: Seams, over: SeamOverrides = {}): Seams {
+  const s: Seams = {
+    postgres: over.postgres ?? defaults.postgres,
+    secrets: over.secrets ?? defaults.secrets,
+    ingress: over.ingress ?? defaults.ingress,
+    tls: over.tls ?? defaults.tls,
+    backups: over.backups ?? defaults.backups,
+    monitoring: over.monitoring ?? defaults.monitoring,
+  };
+
   check("postgres", s.postgres);
   check("secrets", s.secrets);
   check("ingress", s.ingress);

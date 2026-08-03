@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { resolveTier } from "../src/lib/tiers";
 import { resolveSeams, type Seams } from "../src/lib/seams";
+import { shapeFor } from "../src/lib/tiers";
 
 const base: Seams = {
   postgres: "reference",
@@ -37,6 +38,37 @@ describe("tiers", () => {
 
   test("zero replicas is refused", () => {
     expect(() => resolveTier("light", 0)).toThrow(/at least 1/);
+  });
+});
+
+describe("tier profiles", () => {
+  test("local is emulated and reaches nothing real", () => {
+    const t = shapeFor("local");
+    expect(t.emulated).toBe(true);
+    expect(t.seams.ingress).toBe("omit");
+    expect(t.seams.tls).toBe("omit");
+    // The one thing worth exercising offline.
+    expect(t.seams.backups).toBe("pg-dump");
+  });
+
+  test("minimal-cloud is the cheapest thing that is still a real deployment", () => {
+    const t = shapeFor("minimal-cloud");
+    expect(t.emulated).toBe(false);
+    // TLS is not optional on something public.
+    expect(t.seams.tls).toBe("cert-manager");
+    expect(t.seams.backups).toBe("pg-dump");
+    // A managed database, not one we operate.
+    expect(t.seams.postgres).toBe("reference");
+    // Off on purpose — the Prometheus stack usually costs more than the app.
+    expect(t.seams.monitoring).toBe("omit");
+  });
+
+  test("an override replaces one seam and leaves the profile alone", () => {
+    const t = shapeFor("minimal-cloud");
+    const s = resolveSeams(t.seams, { monitoring: "prometheus-operator" });
+    expect(s.monitoring).toBe("prometheus-operator");
+    expect(s.tls).toBe("cert-manager");
+    expect(s.backups).toBe("pg-dump");
   });
 });
 

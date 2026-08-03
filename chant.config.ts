@@ -71,21 +71,25 @@ export default {
     //                streaming, so the tier carries the wiring, not a number)
     tier: {
       type: "string",
-      enum: ["light", "production", "production-ha"],
-      default: "light",
+      enum: ["local", "light", "minimal-cloud", "production", "production-ha"],
+      default: "local",
       env: "FOUNTAIN_TIER",
     },
     replicas: { type: "number", required: false },
 
     // ── seams ─────────────────────────────────────────────────────────────
+    // Unset means "take the tier's default" — see src/lib/tiers.ts. Setting one
+    // replaces exactly that seam and leaves the rest of the tier profile alone,
+    // so there is no default here to disagree with the tier's.
+    //
     // `reference` means "it already exists, here is how to reach it".
     // `omit` means "this deployment does not have one".
-    postgres: { type: "string", enum: ["reference", "cnpg"], default: "reference" },
-    secrets: { type: "string", enum: ["reference", "infisical"], default: "reference" },
-    ingress: { type: "string", enum: ["omit", "ingress", "traefik"], default: "ingress" },
-    tls: { type: "string", enum: ["omit", "cert-manager"], default: "omit" },
-    backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], default: "omit" },
-    monitoring: { type: "string", enum: ["omit", "prometheus-operator"], default: "omit" },
+    postgres: { type: "string", enum: ["reference", "cnpg"], required: false },
+    secrets: { type: "string", enum: ["reference", "infisical"], required: false },
+    ingress: { type: "string", enum: ["omit", "ingress", "traefik"], required: false },
+    tls: { type: "string", enum: ["omit", "cert-manager"], required: false },
+    backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], required: false },
+    monitoring: { type: "string", enum: ["omit", "prometheus-operator"], required: false },
 
     // ── seam inputs ───────────────────────────────────────────────────────
     // postgres=reference: nothing here — DATABASE_URL lives in the Secret,

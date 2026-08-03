@@ -194,6 +194,77 @@ forward:
     @echo "http://localhost:4000  (ctrl-c to stop)"
     kubectl port-forward -n "{{ns}}" svc/fountain 4000:80
 
+# ── first login ────────────────────────────────────────────────────────────
+
+# Mark an account's email verified, so it can actually use the instance.
+#
+# This deployment sends no mail. emailDelivery defaults to "none" because
+# without Resend's DNS records mail is silently discarded, so the verification
+# link a signup asks you to click never arrives and cannot.
+#
+# What that looks like without this target is not an error. Signing in appears
+# to work — the POST returns a redirect to /onboarding/step_1 — and then every
+# authenticated page bounces straight back to /auth/login. A loop, with nothing
+# on screen saying why. Verified, the same account reaches onboarding and
+# /conversations.
+#
+# So: register at /auth/register first, then run this with the same address.
+verify-email EMAIL:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    EMAIL="{{EMAIL}}"
+    if ! printf '%s' "$EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+      echo "  ✗ not an email address: $EMAIL" >&2
+      exit 2
+    fi
+
+    # A separate pod, not `kubectl exec` into the running one.
+    #
+    # Release.verify_email/1 calls ensure_all_started, which boots the whole
+    # application — including the metrics endpoint on 9568. Inside the pod
+    # that is already serving, that port is taken, so the documented
+    # `bin/fountain_server eval` crashes with :eaddrinuse before it reaches
+    # the database. In its own pod the ports are free.
+    #
+    # The spec is lifted from the live Deployment rather than restated here,
+    # so the eval gets exactly the env the app runs with — the same Secret,
+    # the same DATABASE_URL — and cannot drift from it. Probes and ports come
+    # off because this serves nothing and exits.
+    spec="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -c --arg e "$EMAIL" '
+      .spec.template.spec
+      | .restartPolicy = "Never"
+      | .containers |= [ .[0]
+          | .name = "eval"
+          | .command = ["/app/bin/fountain_server", "eval", "Fountain.Release.verify_email(\"\($e)\")"]
+          | del(.args, .livenessProbe, .readinessProbe, .startupProbe, .ports)
+        ]')"
+
+    set +e
+    out="$(kubectl run "fountain-verify-email-$$" --rm -i --restart=Never -n "{{ns}}" \
+      --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
+    rc=$?
+    set -e
+
+    # The eval reports a missing account by printing to stderr and returning
+    # an error tuple, which does not set an exit code. Reporting success for
+    # an address that never registered is the failure worth avoiding here, so
+    # the success line is what decides, not $?.
+    if printf '%s' "$out" | grep -q "You can now sign in"; then
+      echo "  ✓ $EMAIL is verified — sign in at /auth/login"
+      exit 0
+    fi
+
+    if printf '%s' "$out" | grep -q "No account found"; then
+      echo "  ✗ no account for $EMAIL" >&2
+      echo "    Register it first: just forward, then http://localhost:4000/auth/register" >&2
+      exit 1
+    fi
+
+    echo "$out" >&2
+    echo "  ✗ could not verify $EMAIL (kubectl exit $rc)" >&2
+    exit 1
+
 # ── operating ──────────────────────────────────────────────────────────────
 
 status:

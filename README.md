@@ -41,6 +41,26 @@ just forward      # http://localhost:4000
 just down
 ```
 
+### First login
+
+A deploy that serves `/health` is not yet an instance you can use. Register at `http://localhost:4000/auth/register`, then:
+
+```bash
+just verify-email you@example.com
+```
+
+This deployment sends no mail — `emailDelivery` defaults to `none`, because without Resend's DNS records mail is silently discarded, so the verification link never arrives and cannot. `just verify-email` is upstream's own escape hatch for exactly that case.
+
+Skip it and nothing says so. Signing in looks like it worked, and then every page inside the app sends you back to the login form, with no message:
+
+| | registered only | after `just verify-email` |
+|---|---|---|
+| `POST /auth/login` | 302 to onboarding | 302 to onboarding |
+| `/onboarding/step_1` | 302 back to login | 200 |
+| `/conversations` | 302 back to login | 200 |
+
+Making an account an **admin** needs `Fountain.Release.promote_admin/1`, which is on upstream's `main` and not in the pinned `v0.3.0`. Nothing here exposes it yet ([#31](https://github.com/INTENTIUS/fountain-ops/issues/31)).
+
 ### If something goes wrong
 
 The steps of `just up` are separate targets, because when a deploy fails you want the step, not the whole thing again.
@@ -59,7 +79,7 @@ One `light` deployment on k3d: the fountain server, a single-instance Postgres, 
 
 Verified working: the app boots, runs its migrations, and answers `/health/ready` with `{"status":"ok","checks":{"database":"ok"}}`.
 
-Conversations will not run without a real `SPRITES_TOKEN` — `just secret` writes a placeholder so the app boots. Everything else works.
+You can register, verify with `just verify-email`, and sign in. Conversations will not run without a real `SPRITES_TOKEN` — `just secret` writes a placeholder so the app boots.
 
 ## The two axes
 
@@ -100,6 +120,9 @@ The operator modes need their operator already installed. chant declares custom 
 |---|---|
 | `target=k3d`, `tier=light` | **Verified** — stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | **Verified** — 23 tables, app connects |
+| Registering and signing in | **Verified** — registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
+| Holding a conversation | **Not possible.** `SPRITES_TOKEN` is a placeholder, so there is no data plane — [#15](https://github.com/INTENTIUS/fountain-ops/issues/15) |
+| Admin | **Not possible.** `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 | `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
 | `target=kubernetes` | **Builds only.** Never applied to a real cluster |
 | `tier=standard`, `tier=ha` | **Builds only.** The clustering wiring is emitted and unexercised |

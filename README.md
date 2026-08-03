@@ -198,7 +198,7 @@ Actions are pinned by commit SHA, tools by release version. A tag is a moving po
 
 ## The site
 
-[intentius.github.io/fountain-ops](https://INTENTIUS.github.io/fountain-ops/) is this README, rendered.
+[intentius.io/fountain-ops](https://intentius.io/fountain-ops/) is this README, rendered.
 
 ```bash
 just site        # assemble _site_src/ from README.md

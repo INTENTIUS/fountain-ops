@@ -29,7 +29,13 @@ doctor:
     set -uo pipefail
     ok=0
     for t in docker k3d kubectl node npm; do
-      if command -v "$t" >/dev/null 2>&1; then printf "  ✓ %-8s %s\n" "$t" "$($t --version 2>/dev/null | head -1 | cut -c1-48)"
+      # kubectl takes `version`, not `--version`, and prints nothing for the
+      # latter — so ask each tool the way it wants to be asked.
+      case "$t" in
+        kubectl) v="$(kubectl version --client -o yaml 2>/dev/null | awk -F': ' '/gitVersion/{print $2; exit}')" ;;
+        *)       v="$($t --version 2>/dev/null | head -1)" ;;
+      esac
+      if command -v "$t" >/dev/null 2>&1; then printf "  ✓ %-8s %s\n" "$t" "$(printf '%s' "$v" | cut -c1-48)"
       else printf "  ✗ %-8s missing\n" "$t"; ok=1; fi
     done
     if docker info >/dev/null 2>&1; then echo "  ✓ docker   daemon running"

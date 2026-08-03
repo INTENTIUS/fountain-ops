@@ -269,6 +269,119 @@ verify-email EMAIL:
     echo "  ✗ could not verify $EMAIL (kubectl exit $rc)" >&2
     exit 1
 
+# ── the conversation gate ──────────────────────────────────────────────────
+
+# Prove a conversation runs: throwaway agent, one prompt, stream, tear down.
+#
+# `just verify` asks /health. A 200 there says the release booted. It does not
+# say it reached its database, resolved its secrets, provisioned a sandbox or
+# streamed anything back. This does.
+#
+# Two claims, and which one you get is not implicit — MODE picks it:
+#
+#   plumbing (default)  provision happened, a turn ran, events streamed in
+#                       order, exit 0. True against either data plane. Catches
+#                       a broken Secret, an unreachable data plane, a
+#                       migration that did not run.
+#
+#   strict              additionally, a model actually replied. Refuses to run
+#                       against dataPlane=spritzer, because the emulator
+#                       answers exec by echoing the command back: every
+#                       plumbing assertion above passes with no model in the
+#                       loop at all. A gate that cannot tell those apart is
+#                       worse than no gate, so this one fails closed.
+#
+# Needs a verified account — register, then `just verify-email`. Password comes
+# from $FOUNTAIN_PASSWORD rather than the command line, so it stays out of your
+# shell history.
+verify-conversation EMAIL MODE="plumbing":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    case "{{MODE}}" in plumbing|strict) ;; *) echo "MODE must be plumbing or strict" >&2; exit 2 ;; esac
+    # No apostrophe in this message. bash 3.2, which is what macOS ships, treats
+    # one inside ${VAR:?...} as an opening quote and mis-parses the rest of the
+    # script — the symptom is an "unbound variable" for something assigned two
+    # lines further down, which sends you looking in the wrong place entirely.
+    : "${FOUNTAIN_PASSWORD:?set FOUNTAIN_PASSWORD to the password for this account}"
+
+    # Which data plane is actually deployed, read off the live Deployment
+    # rather than from a parameter — the parameter says what was built, this
+    # says what is running.
+    # Every env value on the app container, and look for the emulator's service
+    # name in it. A jsonpath filter — env[?(@.name=="SPRITES_BASE_URL")] — is
+    # the obvious way to write this and bash 3.2, which is what macOS ships,
+    # mis-parses the `?(` inside `$( )` and silently leaves the variable unset.
+    plane=sprites
+    envValues="$(kubectl get deploy fountain -n "{{ns}}" -o jsonpath='{.spec.template.spec.containers[0].env[*].value}' 2>/dev/null || true)"
+    case "$envValues" in *fountain-spritzer*) plane=spritzer ;; esac
+    echo "  data plane: $plane"
+
+    if [ "{{MODE}}" = "strict" ] && [ "$plane" = "spritzer" ]; then
+      echo "  ✗ strict needs a real data plane. This deployment runs the emulator," >&2
+      echo "    which echoes the runtime command back instead of calling a model," >&2
+      echo "    so a green run here would prove nothing about a reply." >&2
+      echo "    Redeploy with --param dataPlane=sprites and a real SPRITES_TOKEN." >&2
+      exit 1
+    fi
+
+    kubectl port-forward -n "{{ns}}" svc/fountain 14000:80 >/dev/null 2>&1 &
+    pf=$!
+    base=http://localhost:14000
+    # Everything below is a throwaway. The trap is what makes that true even
+    # when an assertion fails — losing the port-forward is fine, leaving an
+    # agent and a live sandbox behind is not.
+    conv=""; agent=""
+    cleanup() {
+      [ -n "$conv" ]  && curl -s -o /dev/null -X POST "$base/api/conversations/$conv/terminate" -H "authorization: Bearer ${key:-}" || true
+      [ -n "$agent" ] && curl -s -o /dev/null -X DELETE "$base/api/agents/$agent" -H "authorization: Bearer ${key:-}" || true
+      kill $pf 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    for _ in $(seq 1 30); do curl -s -o /dev/null -m 2 "$base/health" && break || sleep 1; done
+
+    jsonstr() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
+
+    key="$(curl -s -X POST "$base/api/auth/token" -H 'content-type: application/json' \
+      -d "{\"email\":\"{{EMAIL}}\",\"password\":\"$FOUNTAIN_PASSWORD\"}" | jsonstr api_key)"
+    [ -n "$key" ] || { echo "  ✗ could not get an API key for {{EMAIL}} — is it registered and verified?" >&2; exit 1; }
+
+    agent="$(curl -s -X POST "$base/api/agents" -H "authorization: Bearer $key" -H 'content-type: application/json' \
+      -d '{"name":"verify-throwaway","model":"anthropic/claude-sonnet-4-6","runtime":"claude"}' | jsonstr id)"
+    [ -n "$agent" ] || { echo "  ✗ could not create the throwaway agent" >&2; exit 1; }
+
+    conv="$(curl -s -X POST "$base/api/conversations" -H "authorization: Bearer $key" -H 'content-type: application/json' \
+      -d "{\"agent_id\":\"$agent\",\"prompt\":\"Reply with the single word: fountain\"}" | jsonstr id)"
+    [ -n "$conv" ] || { echo "  ✗ could not open a conversation" >&2; exit 1; }
+    echo "  conversation $conv"
+
+    # Poll to a terminal state. A fixed sleep is the usual shortcut here and it
+    # is how this check starts passing on a fast machine and failing on a slow
+    # one.
+    for _ in $(seq 1 60); do
+      st="$(curl -s "$base/api/conversations/$conv" -H "authorization: Bearer $key" | jsonstr status)"
+      case "$st" in pending|running) sleep 2 ;; *) break ;; esac
+    done
+
+    ev="$(curl -sN --max-time 20 "$base/api/conversations/$conv/stream?wait=false" -H "authorization: Bearer $key")"
+
+    fail() { echo "  ✗ $1" >&2; echo "$ev" | head -30 >&2; exit 1; }
+    printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
+    printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
+    printf '%s' "$ev" | grep -q '"exit_code\\":0'     || fail "the turn did not exit 0"
+    printf '%s' "$ev" | grep -q 'event: output'       || fail "the turn produced no output at all"
+    echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
+
+    if [ "{{MODE}}" = "strict" ]; then
+      # The claude runtime's terminal event. spritzer never emits one — it
+      # echoes the command line and exits — so this is the assertion that
+      # cannot be satisfied without a model on the other end.
+      printf '%s' "$ev" | grep -q '\\"type\\":\\"result\\"' \
+        || fail "no result event — the turn ran but no model replied"
+      echo "  ✓ strict: a model replied"
+    fi
+
 # ── operating ──────────────────────────────────────────────────────────────
 
 status:

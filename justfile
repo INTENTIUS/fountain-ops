@@ -28,7 +28,10 @@ doctor:
     #!/usr/bin/env bash
     set -uo pipefail
     ok=0
-    for t in docker k3d kubectl node npm; do
+    # jq is here because `just verify-email` builds a pod spec with it. macOS
+    # does not ship it, and the failure without this line is a bare
+    # "jq: command not found" from inside a recipe.
+    for t in docker k3d kubectl node npm jq; do
       # kubectl takes `version`, not `--version`, and prints nothing for the
       # latter — so ask each tool the way it wants to be asked.
       case "$t" in

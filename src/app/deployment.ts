@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, host, httpsPublicUrl, tier, seams, secretName, emailDelivery, registrationEnabled, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, seams, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -79,12 +79,18 @@ export const deployment = new Deployment({
               { name: "PHX_SERVER", value: "true" },
               { name: "PORT", value: "4000" },
               { name: "PUBLIC_URL", value: publicUrl },
-              { name: "PHX_HOST", value: host },
+              // A hostname, not an authority. Phoenix's url: [host: ...] rejects
+              // "localhost:4000" and logs it on every boot.
+              { name: "PHX_HOST", value: hostname },
               // fountain refuses to boot without a mail decision. Discarding
               // verification mail silently would dead-end signup with no
               // visible error, so it makes you say so — "none" is a real
               // answer, absent is not.
               { name: "EMAIL_DELIVERY", value: emailDelivery },
+              // Off unless asked for. The OS variable wins over the hardcoded
+              // `traces_exporter: :otlp` in fountain's runtime config, which is
+              // the only way to stop it — verified by watching the 401s stop.
+              { name: "OTEL_TRACES_EXPORTER", value: otelTraces },
               // The subscription gate is a lock with no key on a self-hosted
               // instance unless Stripe is configured.
               { name: "BILLING_ENABLED", value: "false" },

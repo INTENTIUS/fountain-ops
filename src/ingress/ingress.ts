@@ -1,5 +1,5 @@
 import { Ingress, Certificate } from "@intentius/chant-lexicon-k8s";
-import { namespace, host, httpsPublicUrl, seams, clusterIssuer, ingressClassName, labels } from "../params";
+import { namespace, hostname, httpsPublicUrl, seams, clusterIssuer, ingressClassName, labels } from "../params";
 
 /**
  * The ingress seam.
@@ -40,7 +40,7 @@ export const ingress =
           ingressClassName,
           rules: [
             {
-              host,
+              host: hostname,
               http: {
                 paths: [
                   {
@@ -55,7 +55,7 @@ export const ingress =
               },
             },
           ],
-          tls: seams.tls === "cert-manager" ? [{ hosts: [host], secretName: "fountain-tls" }] : undefined,
+          tls: seams.tls === "cert-manager" ? [{ hosts: [hostname], secretName: "fountain-tls" }] : undefined,
         },
       })
     : undefined;
@@ -73,7 +73,7 @@ export const certificate =
         spec: {
           secretName: "fountain-tls",
           issuerRef: { name: clusterIssuer, kind: "ClusterIssuer" },
-          dnsNames: [host],
+          dnsNames: [hostname],
         },
       })
     : undefined;

@@ -165,6 +165,10 @@ export default {
     // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
     emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
     registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
+    // Off by default: fountain hardcodes an OTLP exporter aimed at Honeycomb,
+    // so an instance with no collector logs a 401 every five seconds forever.
+    // "otlp" hands it back to the standard OTEL_EXPORTER_OTLP_* variables.
+    otelTraces: { type: "string", enum: ["none", "otlp"], default: "none" },
     // tls=cert-manager:
     clusterIssuer: { type: "string", default: "letsencrypt-production" },
     // ingress=ingress:

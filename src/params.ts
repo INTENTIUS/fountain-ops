@@ -19,12 +19,31 @@ export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
 export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.3.0";
 
-/** The externally-visible host — the ingress rule and the certificate SAN. */
+/**
+ * The externally-visible authority, port included where there is one.
+ *
+ * This is the value PUBLIC_URL is built from, and the only one of the two that
+ * wants a port. Everything that needs a *hostname* uses `hostname` below.
+ */
 export const host = (params.host as string | undefined) ?? "localhost:4000";
 export const scheme = (params.scheme as string | undefined) ?? "http";
 
 /** Derived, not declared — splitting a URL apart in source is a call nothing folds. */
 export const publicUrl = `${scheme}://${host}`;
+
+/**
+ * The same value with any port removed.
+ *
+ * `host` means two things and only one of them takes a port. PHX_HOST is
+ * Phoenix's `url: [host: ...]`, an Ingress rule's `host` and a Certificate's
+ * `dnsNames` are all hostnames, and a port in any of them is wrong — Phoenix
+ * says so on every boot, and a SAN with a port in it is not a SAN.
+ *
+ * It was invisible for a while because the default target omits ingress
+ * entirely, so only PHX_HOST was actually wrong, and it was wrong on every
+ * local deployment. A `:` in a hostname is asserted against in the tests.
+ */
+export const hostname = host.split(":")[0];
 
 /** https is what turns on fountain's redirect, HSTS and secure cookies. */
 export const httpsPublicUrl = scheme === "https";
@@ -60,6 +79,20 @@ export const seams: Seams = resolveSeams(
 export const secretName = (params.secretName as string | undefined) ?? "fountain-secrets";
 /** "none" is a deliberate answer, not a missing one — fountain will not boot without it. */
 export const emailDelivery = (params.emailDelivery as string | undefined) ?? "none";
+/**
+ * Trace export, off by default.
+ *
+ * fountain's runtime config hardcodes `traces_exporter: :otlp` and defaults the
+ * endpoint to api.honeycomb.io, so an instance that has never heard of
+ * Honeycomb retries a 401 against it every five seconds for the life of the
+ * pod — twelve lines a minute in `just logs`, saying "error" and "401". That is
+ * the target the README sends you to when something is wrong, so the real
+ * signal was underneath a vendor error nobody could act on.
+ *
+ * "otlp" hands it back to the standard OTEL_EXPORTER_OTLP_* variables, which
+ * are the operator's to supply; this repo does not model them.
+ */
+export const otelTraces = (params.otelTraces as string | undefined) ?? "none";
 export const registrationEnabled = (params.registrationEnabled as string | undefined) ?? "true";
 export const clusterIssuer = (params.clusterIssuer as string | undefined) ?? "letsencrypt-production";
 export const ingressClassName = params.ingressClassName as string | undefined;

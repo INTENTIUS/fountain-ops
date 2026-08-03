@@ -1,5 +1,5 @@
 import { IngressRoute, Middleware } from "@intentius/chant-lexicon-k8s";
-import { namespace, host, httpsPublicUrl, seams, labels, traefikMiddlewareNamespace } from "../params";
+import { namespace, hostname, httpsPublicUrl, seams, labels, traefikMiddlewareNamespace } from "../params";
 
 /**
  * The Traefik ingress seam.
@@ -18,7 +18,7 @@ import { namespace, host, httpsPublicUrl, seams, labels, traefikMiddlewareNamesp
  */
 
 /** The matcher. Backticks are Traefik's grammar, not YAML quoting. */
-const match = `Host(\`${host}\`)`;
+const match = `Host(\`${hostname}\`)`;
 
 /** Port 80 on the Service — never 9568, which is the metrics listener. */
 const services = [{ name: "fountain", port: 80 }];

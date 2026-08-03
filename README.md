@@ -117,17 +117,19 @@ The operator modes need their operator already installed. chant declares custom 
 
 fountain reaches the sandboxes its agents run in through one credential and one base URL. `dataPlane=spritzer` points that URL at an emulator running in the cluster, so the seam is configuration and nothing else — the app is not built differently and cannot tell. That is what makes a local run exercise the real control-plane path instead of a stub of it.
 
-It works further than you might expect. Creating a conversation provisions a sprite, writes the `fountain` skill and a `/home/sprite/.env` into its filesystem, runs a turn, and streams `provision` → `turn` → `output` → done with `exit_code: 0`.
+Provisioning works. Creating a conversation creates a sprite and populates it — fountain writes its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the conversation id into the sprite's filesystem, and spritzer then reports that sprite `running` with both files present.
 
-**And the output is an echo.** spritzer answers exec with a small scripted interpreter — `echo`, `cat`, `rm`, and an echo-back default — so the turn returns the runtime's own command line rather than anything a model said:
+**The turn does not finish.** After provisioning, fountain reattaches to any existing runtime session, and that call asks spritzer's exec path over plain HTTP. spritzer serves it as a WebSocket only, so it answers `426` and the turn is abandoned:
 
 ```
-claude --dangerously-skip-permissions --print --verbose --output-format stream-json --session-id ...
+event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
 ```
 
-Three things are absent and no configuration brings them back: **live model reasoning**, **real tool execution** in the sandbox, and **true VM isolation**. So a green local conversation is a plumbing check — it says fountain can provision a sandbox, address it, and stream from it. It says nothing about how an agent behaves, and it is not somewhere to judge sandbox security. Single-node Postgres is likewise not somewhere to benchmark durability.
+Reproducible on every conversation, including straight after a fresh rollout. Filed as [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18); it is one endpoint, and everything on either side of it already works.
 
-The consequence worth stating: a deploy gate that only asserts "a conversation streamed" passes against spritzer while proving nothing about the model ([#4](https://github.com/INTENTIUS/fountain-ops/issues/4)).
+So today the emulated data plane proves the substrate can provision and address a sandbox, and nothing beyond that. `just verify-conversation` will tell you so rather than passing.
+
+Even once that lands, three things are absent and no configuration brings them back: **live model reasoning**, **real tool execution** in the sandbox, and **true VM isolation** — spritzer answers exec with a scripted interpreter whose default is to echo the command back. A green local conversation would be a plumbing check. It is not somewhere to judge agent behaviour or sandbox security, and single-node Postgres is likewise not somewhere to benchmark durability.
 
 For real conversations set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret. That token is a **platform** credential, never a tenant one — it must not reach tenant-visible config, agent Environments or Vaults, or logs.
 
@@ -140,7 +142,8 @@ For real conversations set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in
 | `target=k3d`, `tier=light` | **Verified** — stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | **Verified** — 23 tables, app connects |
 | Registering and signing in | **Verified** — registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
-| Holding a conversation | **Streams, against an emulated data plane.** A sprite is provisioned and populated, a turn runs, output streams, the turn exits 0. The output is spritzer's echo, not a model — see below |
+| Provisioning a sandbox | **Verified, against the emulated data plane.** A sprite is created and populated — the fountain skill and a `/home/sprite/.env` are written into its filesystem |
+| Completing a turn | **No.** The turn starts and is then orphaned: fountain's reattach calls exec over plain HTTP and spritzer answers `426` — [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) |
 | Admin | **Not possible.** `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 | `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
 | `target=kubernetes` | **Builds only.** Never applied to a real cluster |

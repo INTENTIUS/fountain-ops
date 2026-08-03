@@ -1,4 +1,5 @@
 import type { ChantConfig } from "@intentius/chant";
+import type { K8sChantConfig } from "@intentius/chant-lexicon-k8s";
 
 /**
  * Self-hosted fountain, deployed by chant.
@@ -35,8 +36,11 @@ export default {
   sourceDir: "src",
 
   // One environment per invocation — the same single-deployment-at-a-time
-  // convention the params below follow.
-  environments: [env],
+  // convention the params below follow. "local" is always available so the
+  // cluster binding below has an env to hang off; the justfile exports
+  // FOUNTAIN_ENV=local, so a local deploy is owned and labelled `local` and
+  // the binding, the ownership marker and the instance label all agree.
+  environments: Array.from(new Set([env, "local"])),
 
   // Every resource module here reads a value that comes out of a function --
   // resolveTier, targetShape, resolveSeams -- so the static folder can never
@@ -54,6 +58,27 @@ export default {
   // the stack and env identity, so `--owned` filtering, drift and the
   // owned-only prune all have something to key on.
   ownership: { stack: "fountain", env },
+
+  /**
+   * Which cluster `local` means.
+   *
+   * chant's k8s reader binds `--env <name>` to the context named here and
+   * resolves the apiserver from the kubeconfig behind it. Without a binding it
+   * reads whatever context happens to be ambient — behold pointed at this repo
+   * with no binding tried to observe it against a live EKS cluster in
+   * us-east-1, and only the missing binding stopped it rendering that cluster's
+   * contents as ours.
+   *
+   * Only `local` is bound. `dev` and anything else stay unbound deliberately:
+   * a declared binding is checked on every live read and refuses on mismatch,
+   * which is what you want pointing at a laptop and an obstacle pointing at a
+   * cluster this repo knows nothing about. Bring your own profile for those.
+   */
+  k8s: {
+    profiles: {
+      local: { context: "k3d-fountain-local" },
+    },
+  } satisfies K8sChantConfig,
 
   lint: {
     rules: {

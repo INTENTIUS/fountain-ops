@@ -18,6 +18,7 @@
     "ci/**/*.ts",
     "pages/**/*.ts",
     "workflows/**/*.ts",
-    "chant.config.ts"
+    "chant.config.ts",
+    "chant-config.d.ts"
   ]
 }

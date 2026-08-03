@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Self-hosted fountain, deployed by chant.",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "chant build src -o dist/fountain.yaml --format yaml",
     "lint": "chant lint src",

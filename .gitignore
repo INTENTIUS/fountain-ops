@@ -3,6 +3,6 @@ dist/
 .chant/
 skills/
 
-# Assembled by `just site`; the Pages workflow builds it and nothing commits it.
-_site_src/
-_site/
+# Built by `just site`; the Pages workflow publishes it and nothing commits it.
+docs-site/dist/
+docs-site/.astro/

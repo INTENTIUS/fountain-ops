@@ -173,27 +173,22 @@ ci-check:
 
 # ── the published site ─────────────────────────────────────────────────────
 
-# Assemble the Jekyll source the Pages workflow builds.
+# Build the docs site. Astro + Starlight, in docs-site/.
 #
-# The site has no content of its own: README.md becomes the index page. That is
-# the point — a docs tree that restates the README is exactly the drift this
-# repo keeps having to delete, and one source cannot disagree with itself.
+# The same target CI runs, so what gets published is what you previewed. Uses
+# `npm ci` when there is a lockfile to honour, which is what CI wants and what
+# keeps a local build from quietly resolving a different Starlight.
 site:
     #!/usr/bin/env bash
     set -euo pipefail
-    rm -rf _site_src
-    mkdir -p _site_src
-    cp site/_config.yml _site_src/_config.yml
-    # Front matter, so the theme wraps it in a layout. The README's own H1 is
-    # left in place and the title is not repeated above it.
-    {
-      echo "---"
-      echo "layout: default"
-      echo "---"
-      echo ""
-      cat README.md
-    } > _site_src/index.md
-    echo "  ✓ _site_src assembled from README.md"
+    cd docs-site
+    if [ -f package-lock.json ]; then npm ci; else npm install; fi
+    npm run build
+    echo "  ✓ docs-site/dist built"
+
+# Serve the docs site locally with hot reload.
+site-dev:
+    cd docs-site && npm install && npm run dev
 
 # Does the source typecheck against the lexicon's own types?
 #

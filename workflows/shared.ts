@@ -22,6 +22,10 @@ import { Step } from "@intentius/chant-lexicon-github";
  */
 export const CHECKOUT_SHA = "11d5960a326750d5838078e36cf38b85af677262"; // v4
 
+export const SETUP_NODE_SHA = "49933ea5288caeca8642d1e84afbd3f7d6820020"; // v4
+
+export const NODE_VERSION = "24";
+
 export const JUST_VERSION = "1.36.0";
 
 /**

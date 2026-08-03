@@ -1,0 +1,73 @@
+---
+title: fountain-ops
+description: Self-hosted fountain, deployed by chant. Targets, tiers and seams, no shell.
+template: splash
+hero:
+  tagline: Self-hosted fountain, deployed by chant. Two targets, three tiers, seven seams, and a status table that says what is actually verified.
+  actions:
+    - text: Stand it up
+      link: /fountain-ops/getting-started/stand-it-up/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/INTENTIUS/fountain-ops
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Five minutes, most of it pulling images
+
+```bash
+just doctor        # what this needs, and how to install what is missing
+npm install
+just up            # cluster, secret, build, apply, wait, prove it serves
+```
+
+Then register at `localhost:4000/auth/register`, run `just verify-email you@example.com`,
+and sign in. See [First login](/fountain-ops/getting-started/first-login/) for why
+that second step is not optional.
+
+<CardGrid stagger>
+  <Card title="Two axes, not a grid" icon="setting">
+    **Target** is where the substrate runs. **Tier** is how durable it is.
+    Separate questions — and combinations that would build green and mean
+    something other than they say are refused, with an error naming the seam
+    that fixes it.
+  </Card>
+  <Card title="Seven seams" icon="puzzle">
+    Every dependency has a mode. `postgres`, `secrets`, `ingress`, `tls`,
+    `backups`, `monitoring`, `dataPlane`. The target picks defaults coherent on
+    that substrate; setting one replaces exactly that seam.
+  </Card>
+  <Card title="Offline data plane" icon="laptop">
+    `dataPlane=spritzer` points fountain at an emulator in the cluster. The app
+    is not built differently and cannot tell, so a local run exercises the real
+    control-plane path rather than a stub.
+  </Card>
+  <Card title="A status table that says no" icon="approve-check">
+    Most rows do not say "works". They say **Builds only**, or **Emitted, never
+    run**, or name the issue that blocks them. A backup nobody has restored is
+    a hypothesis.
+  </Card>
+</CardGrid>
+
+## What you drive it with
+
+`just` targets. You do not need to know chant to use this, and no resource file
+reads `process.env` — every input is a declared build parameter, so the same
+parameters produce the same resources.
+
+```bash
+just status       # everything in the namespace
+just logs         # the app, following
+just preview kubernetes standard   # see another target without applying anything
+just down         # remove everything it created, and nothing it did not
+```
+
+## Where to go next
+
+- [What this is](/fountain-ops/getting-started/overview/) — the shape of the repo
+- [Targets and tiers](/fountain-ops/reference/targets-and-tiers/) — the two axes and what is refused
+- [The data plane](/fountain-ops/reference/data-plane/) — and exactly what a local conversation proves
+- [Status](/fountain-ops/status/) — authoritative, and the section to read before believing anything else

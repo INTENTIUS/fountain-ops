@@ -25,11 +25,10 @@ import {
   Checkout,
   SetupNode,
 } from "@intentius/chant-lexicon-github";
-import { CHECKOUT_SHA, installJust } from "../workflows/shared";
+import { CHECKOUT_SHA, SETUP_NODE_SHA, NODE_VERSION, installJust } from "../workflows/shared";
 
 /** Pinned to the version #1394 pins for the k3d lexicon. One number, one place. */
 const K3D_VERSION = "v5.9.0";
-const NODE_VERSION = "24";
 
 /**
  * Actions by commit SHA, not by tag.
@@ -40,7 +39,6 @@ const NODE_VERSION = "24";
  * floating. The tags these resolved from are in the comments so a bump is a
  * one-line diff with something to compare against.
  */
-const SETUP_NODE_SHA = "49933ea5288caeca8642d1e84afbd3f7d6820020"; // v4
 
 export const workflow = new Workflow({
   name: "fountain-ops",

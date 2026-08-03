@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
       - name: Install just
@@ -31,17 +36,12 @@ jobs:
           tar -xzf /tmp/just.tar.gz -C /tmp just
           sudo mv /tmp/just /usr/local/bin/just
           just --version
-      - name: Assemble the site
+      - name: Build the site
         run: just site
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697
-        with:
-          source: _site_src
-          destination: _site
       - name: Upload the artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         with:
-          path: _site
+          path: docs-site/dist
   deploy:
     needs: build
     runs-on: ubuntu-latest

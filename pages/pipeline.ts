@@ -10,20 +10,24 @@
  * under ci/ into a single output file. Two workflows are two files, so they
  * are two source directories.
  *
- * ## The site has no content of its own
+ * ## What it builds
  *
- * `just site` copies README.md in as the index page. Nothing is duplicated and
- * nothing can drift, because there is exactly one source and it is the file
- * contributors already edit. A docs/ tree that restates the README is the
- * thing this repo keeps having to delete — see #20 and #28 — and a site is a
- * very good way to grow one by accident.
+ * docs-site/ — Astro + Starlight, the same stack loomster uses, published under
+ * the org domain at /fountain-ops. `just site` is the one command, so CI builds
+ * the site the same way a human previews it.
  *
- * GitHub's own jekyll-build-pages action does the rendering, so there is no
- * Gemfile, no bundler, and nothing to keep in step with a Ruby version.
+ * The site is authored content, not the README rendered. The README is the
+ * front door; the reference lives here, and neither restates the other. The
+ * status page is the one that says which is authoritative.
  */
 
-import { Workflow, Job, Step, Checkout } from "@intentius/chant-lexicon-github";
-import { CHECKOUT_SHA, installJust } from "../workflows/shared";
+import { Workflow, Job, Step, Checkout, SetupNode } from "@intentius/chant-lexicon-github";
+import {
+  CHECKOUT_SHA,
+  SETUP_NODE_SHA,
+  NODE_VERSION,
+  installJust,
+} from "../workflows/shared";
 
 /**
  * Actions by commit SHA, not by tag — the same reasoning as ci/pipeline.ts.
@@ -31,7 +35,6 @@ import { CHECKOUT_SHA, installJust } from "../workflows/shared";
  * here is a moved tag on the credential that publishes the site.
  */
 const CONFIGURE_PAGES_SHA = "45bfe0192ca1faeb007ade9deae92b16b8254a0d"; // v6.0.0
-const JEKYLL_BUILD_SHA = "44a6e6beabd48582f863aeeb6cb2151cc1716697"; // v1.0.13
 const UPLOAD_ARTIFACT_SHA = "fc324d3547104276b827a68afc52ff2a11cc49c9"; // v5.0.0
 const DEPLOY_PAGES_SHA = "cd2ce8fcbc39b97be8ca5fce6e763baed58fa128"; // v5.0.0
 
@@ -61,21 +64,21 @@ export const build = new Job({
   permissions: { contents: "read", pages: "read" },
   steps: [
     Checkout({ defaults: { step: { uses: `actions/checkout@${CHECKOUT_SHA}` } } }).step,
+    SetupNode({
+      nodeVersion: NODE_VERSION,
+      cache: "npm",
+      defaults: { step: { uses: `actions/setup-node@${SETUP_NODE_SHA}` } },
+    }).step,
     new Step({ name: "Configure Pages", uses: `actions/configure-pages@${CONFIGURE_PAGES_SHA}` }),
-    // The site is assembled by the same target a human runs to preview it, so
-    // what CI publishes is what they saw — which means the runner needs `just`.
-    // Its absence is why the first published run failed at exit 127.
+    // The site is built by the same target a human runs to preview it, so what
+    // CI publishes is what they saw — which means the runner needs `just`. Its
+    // absence is why the first published run failed at exit 127.
     installJust(),
-    new Step({ name: "Assemble the site", run: "just site" }),
-    new Step({
-      name: "Build with Jekyll",
-      uses: `actions/jekyll-build-pages@${JEKYLL_BUILD_SHA}`,
-      with: { source: "_site_src", destination: "_site" },
-    }),
+    new Step({ name: "Build the site", run: "just site" }),
     new Step({
       name: "Upload the artifact",
       uses: `actions/upload-pages-artifact@${UPLOAD_ARTIFACT_SHA}`,
-      with: { path: "_site" },
+      with: { path: "docs-site/dist" },
     }),
   ],
 });

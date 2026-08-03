@@ -51,19 +51,41 @@ The symptom without that check is 24 base backups a day and no error anywhere,
 which is why `pitrSchedule` is a separate parameter from `backupSchedule`
 rather than one shared between two seams that read it differently.
 
-## Operators are not installed
+## Operators
 
-The operator modes need their operator already installed. chant declares custom
-resources; it does not install controllers.
+chant declares custom resources; it does not install controllers. Two targets,
+and the split between them is deliberate.
 
-`just crds` installs the CRDs those seams declare against, deliberately without
-the operators — enough to validate manifests against a real API server, and
-nothing reconciles. That gap is
-[#22](https://github.com/INTENTIUS/fountain-ops/issues/22), and it is the
-keystone for most of the "builds only" rows in
-[Status](/fountain-ops/status/).
+```bash
+just crds        # schemas only — manifests validate, nothing runs
+just operators   # the controllers that reconcile them
+```
+
+`just crds` is enough to check that a real API server accepts what this repo
+emits, without putting a controller anywhere:
 
 ```bash
 just crds
 just dry-run --param postgres=cnpg --param backups=barman-pitr
 ```
+
+`just operators` installs **cert-manager**, **CNPG** and the **barman-cloud
+plugin** — cert-manager first because the barman plugin declares an `Issuer` and
+a `Certificate` and will not start without one. After it, `postgres=cnpg`
+produces a database that actually accepts connections:
+
+```bash
+just operators
+just params="--param postgres=cnpg" up
+```
+
+It refuses to run against a kube context it does not recognise. Installing
+cluster-scoped controllers is free to undo on a throwaway k3d cluster, because
+`just down` deletes the lot; on a cluster you did not create it is not, and
+uninstalling an operator from under running workloads is its own problem. Pass
+`ALLOW_FOREIGN_CLUSTER=1` if you meant it.
+
+Three seams are still not installed, for reasons rather than by omission:
+Traefik already ships with k3s but nothing routes through it here, Infisical
+needs an Infisical server to talk to, and kube-prometheus-stack is a lot of
+laptop for a `ServiceMonitor`.

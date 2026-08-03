@@ -44,6 +44,8 @@ Skip it and nothing tells you: signing in *looks* like it worked, and then every
 
 The steps of `just up` are separate targets, because when a deploy fails you want the step, not the whole thing again.
 
+Build parameters go through a `params` variable — `just params="--param postgres=cnpg" up`.
+
 ```bash
 just status       # everything in the namespace
 just logs         # the app, following
@@ -66,9 +68,9 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 
 | | |
 |---|---|
-| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify and sign in; a sandbox is provisioned and populated |
+| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify and sign in; a sandbox is provisioned and populated. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
 | **Does not work** | Completing a turn ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)); admin ([#31](https://github.com/INTENTIUS/fountain-ops/issues/31)) |
-| **Builds only** | `target=kubernetes`, `tier=standard`/`ha`, `tls=cert-manager`, `monitoring=prometheus-operator`, and every operator seam — no controller has reconciled any of it ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
+| **Builds only** | `target=kubernetes`, `tier=standard`, and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
 

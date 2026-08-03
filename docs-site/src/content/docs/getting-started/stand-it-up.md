@@ -34,6 +34,13 @@ GET /health via an in-cluster probe...
   ✓ /health answered
 ```
 
+Build parameters go through a `params` variable, because `up` is a chain of
+targets and just does not thread arguments through dependencies:
+
+```bash
+just params="--param postgres=cnpg" up
+```
+
 Then reach it:
 
 ```bash

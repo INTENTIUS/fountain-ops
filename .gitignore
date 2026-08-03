@@ -2,3 +2,7 @@ node_modules/
 dist/
 .chant/
 skills/
+
+# Assembled by `just site`; the Pages workflow builds it and nothing commits it.
+_site_src/
+_site/

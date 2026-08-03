@@ -190,11 +190,23 @@ just ci          # render it
 just ci-check    # fail if the committed YAML has drifted from the source
 ```
 
-`ci-check` runs in CI too. GitHub reads YAML from the default branch, so the rendered file has to be committed, which makes hand-editing it possible — and a hand edit would win silently while the declaration still looked authoritative.
+`ci-check` covers both workflows — `ci.yml` and `pages.yml` — and runs in CI too. GitHub reads YAML from the default branch, so the rendered file has to be committed, which makes hand-editing it possible — and a hand edit would win silently while the declaration still looked authoritative.
 
 Two jobs. **check** is the same `just check` you run locally. **e2e** stands the whole thing up on k3d, proves `/health/ready` reaches the database, re-runs `just up` to confirm the secret is not rotated, and dry-runs every seam against a real API server.
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving pointer.
+
+## The site
+
+[intentius.github.io/fountain-ops](https://INTENTIUS.github.io/fountain-ops/) is this README, rendered.
+
+```bash
+just site        # assemble _site_src/ from README.md
+```
+
+That is the whole of it. The site has no content of its own: `just site` copies `README.md` in as the index page and GitHub's Jekyll action renders it. Nothing is duplicated and nothing can drift, because there is one source and it is the file you are reading.
+
+A `docs/` tree restating this file is the thing that would need deleting six months from now, which is why there isn't one.
 
 ## Secrets
 
@@ -208,6 +220,8 @@ No secret value is in this repo, and none ever will be. The interim generation i
 chant.config.ts    lexicons, params, ownership, lint
 justfile           every target you need
 ci/pipeline.ts     this repo's own CI, declared
+pages/pipeline.ts  the Pages workflow, declared the same way
+site/_config.yml   the published site's Jekyll config
 src/
   params.ts        the one place build params are read
   lib/targets.ts   target -> seam defaults

@@ -138,28 +138,62 @@ lint:
 test:
     npx vitest run
 
-# Render this repo's own CI from ci/pipeline.ts.
+# Render this repo's own workflows from their declarations.
+#
+# Two, because `chant build <dir>` collects a directory into one output file:
+# ci/ renders ci.yml, pages/ renders pages.yml.
 ci:
     npx chant build ci -o .github/workflows/ci.yml --format yaml
+    npx chant build pages -o .github/workflows/pages.yml --format yaml
 
-# Fail if the committed workflow has drifted from its declaration.
+# Fail if either committed workflow has drifted from its declaration.
 ci-check:
     #!/usr/bin/env bash
     # GitHub reads YAML from the default branch, so the rendered file has to be
     # committed. That makes hand-editing it possible, and a hand edit would win
     # silently — the declaration would still look authoritative while meaning
-    # nothing. This is the gate that keeps ci/pipeline.ts the source of truth.
+    # nothing. This is the gate that keeps the TypeScript the source of truth.
     set -euo pipefail
     out="$(mktemp -t fountain-ci-XXXX.yml)"
     trap 'rm -f "$out"' EXIT
-    npx chant build ci -o "$out" --format yaml >/dev/null
-    if ! diff -u .github/workflows/ci.yml "$out"; then
+    rc=0
+    for pair in "ci:.github/workflows/ci.yml" "pages:.github/workflows/pages.yml"; do
+      src="${pair%%:*}"; committed="${pair#*:}"
+      npx chant build "$src" -o "$out" --format yaml >/dev/null
+      if diff -u "$committed" "$out"; then
+        echo "  ✓ $committed matches $src/pipeline.ts"
+      else
+        echo ""
+        echo "  $committed is not what $src/pipeline.ts renders."
+        echo "  Run 'just ci' and commit the result."
+        rc=1
+      fi
+    done
+    exit $rc
+
+# ── the published site ─────────────────────────────────────────────────────
+
+# Assemble the Jekyll source the Pages workflow builds.
+#
+# The site has no content of its own: README.md becomes the index page. That is
+# the point — a docs tree that restates the README is exactly the drift this
+# repo keeps having to delete, and one source cannot disagree with itself.
+site:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf _site_src
+    mkdir -p _site_src
+    cp site/_config.yml _site_src/_config.yml
+    # Front matter, so the theme wraps it in a layout. The README's own H1 is
+    # left in place and the title is not repeated above it.
+    {
+      echo "---"
+      echo "layout: default"
+      echo "---"
       echo ""
-      echo "  .github/workflows/ci.yml is not what ci/pipeline.ts renders."
-      echo "  Run 'just ci' and commit the result."
-      exit 1
-    fi
-    echo "  ✓ committed workflow matches ci/pipeline.ts"
+      cat README.md
+    } > _site_src/index.md
+    echo "  ✓ _site_src assembled from README.md"
 
 # Does the source typecheck against the lexicon's own types?
 #

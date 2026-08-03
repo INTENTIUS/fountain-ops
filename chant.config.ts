@@ -199,6 +199,11 @@ export default {
     // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
     emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
     registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
+    // Unset derives from the postgres seam: false for the bundled one, which
+    // serves no TLS, true otherwise. Settable because "otherwise" includes a
+    // referenced Postgres that does not serve TLS either, and assuming it did
+    // was a crashloop with no way out.
+    databaseSsl: { type: "string", enum: ["true", "false"], required: false },
     // Off by default: fountain hardcodes an OTLP exporter aimed at Honeycomb,
     // so an instance with no collector logs a 401 every five seconds forever.
     // "otlp" hands it back to the standard OTEL_EXPORTER_OTLP_* variables.

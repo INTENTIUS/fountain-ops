@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -97,9 +97,10 @@ export const deployment = new Deployment({
               // An instance on the public internet with registration open will
               // be found. Close it once you have your account.
               { name: "REGISTRATION_ENABLED", value: registrationEnabled },
-              // The bundled Postgres serves no TLS, so requiring it is a boot
-              // failure. Anything else is assumed to.
-              { name: "DATABASE_SSL", value: seams.postgres === "bundled" ? "false" : "true" },
+              // Defaults from the seam and is settable — a referenced Postgres
+              // that serves no TLS is an ordinary thing and used to be
+              // unexpressible. See params.ts.
+              { name: "DATABASE_SSL", value: databaseSsl },
               databaseUrl,
               ...clusteringEnv,
               // The whole data plane seam, on the app's side. Unset, the client

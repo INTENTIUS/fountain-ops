@@ -49,6 +49,37 @@ up: cluster-up secret build apply wait storage-init verify
 # Remove everything this created, and nothing it did not.
 down: cluster-down
 
+# ── the guard ──────────────────────────────────────────────────────────────
+
+# Refuse to touch a cluster that is not this project's.
+#
+# `kubectl` acts on whatever context is ambient, and a context is global state
+# that anything on the machine can change — creating any other k3d cluster
+# switches it, silently, mid-session. That happened while writing the restore
+# drill: a second cluster appeared, took the context, and the drill reported a
+# failing backup for a namespace that simply was not there. A wrong answer that
+# looks like a real finding is worse than an error.
+#
+# So every recipe that reaches for a cluster depends on this. `cluster-up` sets
+# the context and is exempt; the read-only `check`, `build`, `lint` and `test`
+# never touch one.
+#
+# ALLOW_FOREIGN_CLUSTER=1 to mean it — `just dry-run` against a real cluster is
+# a legitimate thing to want.
+_require-cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ctx="$(kubectl config current-context 2>/dev/null || true)"
+    if [ "$ctx" = "k3d-{{cluster}}" ] || [ "${ALLOW_FOREIGN_CLUSTER:-}" = "1" ]; then exit 0; fi
+    echo "  ✗ kubectl context is \"$ctx\", not \"k3d-{{cluster}}\"." >&2
+    echo "" >&2
+    echo "    Something else changed it — creating any k3d cluster switches the" >&2
+    echo "    active context. Refusing rather than acting on the wrong cluster." >&2
+    echo "" >&2
+    echo "    Fix it:   kubectl config use-context k3d-{{cluster}}" >&2
+    echo "    Or mean it:  ALLOW_FOREIGN_CLUSTER=1 just <target>" >&2
+    exit 2
+
 # ── preflight ──────────────────────────────────────────────────────────────
 
 # What this needs on the machine, whether it is there, and how to get it.
@@ -133,7 +164,7 @@ cluster-down:
 # ── secrets ────────────────────────────────────────────────────────────────
 
 # Mint the platform secret, once. Never rotates an existing one.
-secret:
+secret: _require-cluster
     #!/usr/bin/env bash
     # The interim of INTENTIUS/chant#1365 — values are generated here rather
     # than declared, because a value in source is the one thing chant will not
@@ -164,7 +195,7 @@ secret:
 # way a missing credential does — late, in the upload container, after a good
 # dump has already been taken. A real bucket is yours to create; this only ever
 # touches the emulator.
-storage-init:
+storage-init: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
     ep="$(npx chant build src --format yaml {{params}} 2>/dev/null | awk '/name: S3_ENDPOINT/{getline; print $2}' | head -1)"
@@ -258,18 +289,18 @@ typecheck:
 # Build, typecheck, lint and test without touching a cluster.
 check: typecheck lint test build
 
-apply: build
+apply: build _require-cluster
     kubectl apply -f dist/fountain.yaml
 
 # Wait for both rollouts. Fountain migrates at boot, so give it room.
-wait:
+wait: _require-cluster
     kubectl rollout status deployment/fountain-postgres -n "{{ns}}" --timeout=120s
     kubectl rollout status deployment/fountain -n "{{ns}}" --timeout=300s
 
 # ── verify ─────────────────────────────────────────────────────────────────
 
 # Prove it serves, from inside the cluster so no port-forward is needed.
-verify:
+verify: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
     echo "GET /health via an in-cluster probe..."
@@ -280,7 +311,7 @@ verify:
     echo "  ✓ /health answered"
 
 # Hold a port open to reach it from the browser.
-forward:
+forward: _require-cluster
     @echo "http://localhost:4000  (ctrl-c to stop)"
     kubectl port-forward -n "{{ns}}" svc/fountain 4000:80
 
@@ -299,7 +330,7 @@ forward:
 # /conversations.
 #
 # So: register at /auth/register first, then run this with the same address.
-verify-email EMAIL:
+verify-email EMAIL: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -380,7 +411,7 @@ verify-email EMAIL:
 # Needs a verified account — register, then `just verify-email`. Password comes
 # from $FOUNTAIN_PASSWORD rather than the command line, so it stays out of your
 # shell history.
-verify-conversation EMAIL MODE="plumbing":
+verify-conversation EMAIL MODE="plumbing": _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -468,27 +499,148 @@ verify-conversation EMAIL MODE="plumbing":
       echo "  ✓ strict: a model replied"
     fi
 
+# Print MASTER_SECRETS_KEY, so it can be kept somewhere the cluster is not.
+master-key: _require-cluster
+    #!/usr/bin/env bash
+    # The one thing a database backup cannot recreate.
+    #
+    # Every tenant's inference credentials are encrypted under this key and
+    # stored in fountain's Postgres. A dump restored without it is ciphertext:
+    # the rows come back, the tables count, `just restore-drill` passes, and not
+    # one credential can be read. Losing this key is losing that data, and it is
+    # currently generated by `just secret` and stored only in the cluster — so
+    # `just down` on a real deployment loses it.
+    #
+    # Hence a target that prints it rather than a doc paragraph asking you to go
+    # and find it. Put it somewhere the cluster is not: a password manager, a
+    # different account, anywhere whose failure is uncorrelated with the
+    # database's.
+    #
+    # It prints to stdout on purpose. Writing it to a file in the repo would be
+    # the one thing this project says it will never do, and piping it somewhere
+    # is your decision to make deliberately.
+    set -euo pipefail
+    # Unconditional, not `[ -t 1 ]`. Gating on "is stdout a terminal" gets this
+    # exactly backwards in every context that matters: a pipe, a CI step, a
+    # command-substitution in someone's script and an agent's tool output are
+    # all not-a-terminal, and all places a secret should not appear by
+    # accident. The opt-in is the whole guard, so it applies everywhere.
+    if [ "${I_MEAN_IT:-}" != "1" ]; then
+      echo "  This prints MASTER_SECRETS_KEY to stdout, wherever that goes." >&2
+      echo "" >&2
+      echo "    Somewhere safe:  I_MEAN_IT=1 just master-key | pbcopy" >&2
+      echo "    On screen:       I_MEAN_IT=1 just master-key" >&2
+      exit 2
+    fi
+    kubectl get secret "{{secret}}" -n "{{ns}}" -o jsonpath='{.data.MASTER_SECRETS_KEY}' | base64 -d
+    echo ""
+
 # ── operating ──────────────────────────────────────────────────────────────
 
-status:
+status: _require-cluster
     kubectl get all,pvc,cronjob -n "{{ns}}"
 
-logs:
+logs: _require-cluster
     kubectl logs -n "{{ns}}" deployment/fountain --tail=100 -f
 
-pg-logs:
+pg-logs: _require-cluster
     kubectl logs -n "{{ns}}" deployment/fountain-postgres --tail=50
 
 # Run the backup CronJob now instead of waiting for its schedule.
-backup-now:
+backup-now: _require-cluster
     kubectl create job -n "{{ns}}" --from=cronjob/fountain-pg-backup "manual-$(date +%s)"
+
+# Prove the latest backup can be read back, without touching the live database.
+restore-drill: _require-cluster
+    #!/usr/bin/env bash
+    # The backup job says "Backup complete" when an object of the right size
+    # lands in the store. That is the upload verified, not the dump — a corrupt
+    # dump of the right size uploads perfectly cleanly, and you find out during
+    # the outage.
+    #
+    # So: restore the newest object into a throwaway database, count what came
+    # back against what is live, drop the throwaway. Nothing writes to the live
+    # database at any point.
+    #
+    # A drill that cannot verify is a failing finding ON THE BACKUP, not on the
+    # drill. The exit code and the message both say so.
+    set -euo pipefail
+
+    cj=fountain-pg-backup
+    if ! kubectl get cronjob "$cj" -n "{{ns}}" >/dev/null 2>&1; then
+      echo "  ✗ no backup CronJob in {{ns}} — nothing to drill" >&2
+      echo "    Needs backups=pg-dump, which is the k3d default." >&2
+      exit 2
+    fi
+    envval() { kubectl get cronjob "$cj" -n "{{ns}}" -o jsonpath="{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=='$1')].value}" 2>/dev/null; }
+    bucket="$(envval BUCKET)"; ep="$(envval S3_ENDPOINT)"; ps="$(envval S3_FORCE_PATH_STYLE)"
+
+    drilldb="fountain_drill_$(date +%s)"
+    job="fountain-drill-$(date +%s)"
+    echo "  store:       ${ep:-aws} / $bucket"
+    echo "  throwaway:   $drilldb"
+
+    # What the live database has, to compare against. A hardcoded number would
+    # pass a restore of last month's schema.
+    live="$(kubectl exec -n "{{ns}}" deploy/fountain-postgres -- \
+      psql -U fountain -d fountain -tAc \
+      "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null | tr -d '[:space:]')"
+    echo "  live tables: $live"
+
+    cleanup() {
+      kubectl delete job "$job" -n "{{ns}}" --ignore-not-found >/dev/null 2>&1 || true
+      # Always drop the throwaway, pass or fail. A drill that leaves a database
+      # behind is a drill nobody runs twice.
+      kubectl exec -n "{{ns}}" deploy/fountain-postgres -- \
+        psql -U fountain -d fountain -c "DROP DATABASE IF EXISTS \"$drilldb\"" >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+
+    sed -e "s|__JOB__|$job|g" -e "s|__NS__|{{ns}}|g" -e "s|__SECRET__|{{secret}}|g" \
+        -e "s|__DRILL_DB__|$drilldb|g" -e "s|__BUCKET__|$bucket|g" \
+        -e "s|__S3_ENDPOINT__|$ep|g" -e "s|__PATH_STYLE__|${ps:-false}|g" \
+        scripts/restore-drill.yaml | kubectl apply -f - >/dev/null
+
+    kubectl wait --for=condition=complete --timeout=300s job/"$job" -n "{{ns}}" >/dev/null 2>&1 || true
+    out="$(kubectl logs -n "{{ns}}" job/"$job" --all-containers --tail=200 2>&1 || true)"
+    printf '%s\n' "$out" | grep -E "DRILL_KEY=|DRILL_FAIL:|DRILL_RESTORED_TABLES=" | sed 's/^/  /' || true
+
+    n="$(printf '%s' "$out" | sed -n 's/.*DRILL_RESTORED_TABLES=\([0-9]*\).*/\1/p' | head -1)"
+    if [ -z "$n" ]; then
+      echo "" >&2
+      echo "  ✗ the latest backup did not restore." >&2
+      echo "    That is a finding on the backup, not on the drill." >&2
+      # The drill's own diagnosis if it produced one, and only the raw log if
+      # it did not — `kubectl logs --all-containers` reports the container that
+      # never started, which reads like the cause and is not.
+      why="$(printf '%s' "$out" | sed -n 's/.*DRILL_FAIL: //p' | head -1)"
+      if [ -n "$why" ]; then
+        echo "" >&2
+        echo "    $why" >&2
+      else
+        printf '%s\n' "$out" | grep -v "waiting to start: PodInitializing" | tail -12 >&2
+      fi
+      exit 1
+    fi
+    if [ "$n" != "$live" ]; then
+      echo "" >&2
+      echo "  ✗ restored $n tables; the live database has $live." >&2
+      echo "    The backup is not a faithful copy. A finding on the backup." >&2
+      exit 1
+    fi
+    echo "  ✓ restored $n tables, matched live, threw the copy away"
+    echo ""
+    echo "    What this did not prove: a restored database is ciphertext for"
+    echo "    every tenant credential. inference_credentials is encrypted under"
+    echo "    MASTER_SECRETS_KEY, so this dump is only recoverable alongside the"
+    echo "    key it was written under — see \`just master-key\`."
 
 # What the deployment would look like elsewhere, without applying anything.
 preview target="kubernetes" tier="standard":
     npx chant build src --format yaml --param target={{target}} --param tier={{tier}}
 
 # Ask a real API server whether it would accept the output.
-dry-run *ARGS:
+dry-run *ARGS: _require-cluster
     #!/usr/bin/env bash
     # `just check` proves the manifests build. This proves a Kubernetes API
     # server validates them against the actual CRD schemas — a different
@@ -503,7 +655,7 @@ dry-run *ARGS:
     kubectl apply --dry-run=server -f "$out"
 
 # Install the controllers that reconcile what `just crds` declares.
-operators:
+operators: _require-cluster
     #!/usr/bin/env bash
     # `just crds` is schemas only: manifests validate, nothing runs. This is the
     # other half — after it, postgres=cnpg produces a database that actually
@@ -535,19 +687,6 @@ operators:
     # run against a context it does not recognise.
     set -euo pipefail
 
-    ctx="$(kubectl config current-context 2>/dev/null || true)"
-    if [ "$ctx" != "k3d-{{cluster}}" ] && [ "${ALLOW_FOREIGN_CLUSTER:-}" != "1" ]; then
-      echo "  ✗ current context is \"$ctx\", not \"k3d-{{cluster}}\"." >&2
-      echo "" >&2
-      echo "    This installs cluster-scoped controllers and CRDs. On a throwaway" >&2
-      echo "    k3d cluster that is free to undo — \`just down\` deletes the lot." >&2
-      echo "    On a cluster you did not create it is not, and uninstalling an" >&2
-      echo "    operator from under running workloads is its own problem." >&2
-      echo "" >&2
-      echo "    If you meant it: ALLOW_FOREIGN_CLUSTER=1 just operators" >&2
-      exit 2
-    fi
-
     apply() { kubectl apply --server-side --force-conflicts -f "$1" >/dev/null; }
     ready() { kubectl -n "$1" wait --for=condition=Available deploy --all --timeout="${2:-300s}" >/dev/null; }
 
@@ -570,7 +709,7 @@ operators:
     echo "  operators are up. Now: just up postgres=cnpg  (or --param postgres=cnpg)"
 
 # Install the CRDs the operator seams declare against, without the operators.
-crds:
+crds: _require-cluster
     #!/usr/bin/env bash
     # Enough to validate manifests and nothing else: no controller runs, so
     # nothing is reconciled. Installing the operators is a separate decision

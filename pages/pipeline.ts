@@ -23,13 +23,13 @@
  */
 
 import { Workflow, Job, Step, Checkout } from "@intentius/chant-lexicon-github";
+import { CHECKOUT_SHA, installJust } from "../workflows/shared";
 
 /**
  * Actions by commit SHA, not by tag — the same reasoning as ci/pipeline.ts.
  * These four run with `pages: write` and `id-token: write`, so a moved tag
  * here is a moved tag on the credential that publishes the site.
  */
-const CHECKOUT_SHA = "11d5960a326750d5838078e36cf38b85af677262"; // v4
 const CONFIGURE_PAGES_SHA = "45bfe0192ca1faeb007ade9deae92b16b8254a0d"; // v6.0.0
 const JEKYLL_BUILD_SHA = "44a6e6beabd48582f863aeeb6cb2151cc1716697"; // v1.0.13
 const UPLOAD_ARTIFACT_SHA = "fc324d3547104276b827a68afc52ff2a11cc49c9"; // v5.0.0
@@ -62,8 +62,10 @@ export const build = new Job({
   steps: [
     Checkout({ defaults: { step: { uses: `actions/checkout@${CHECKOUT_SHA}` } } }).step,
     new Step({ name: "Configure Pages", uses: `actions/configure-pages@${CONFIGURE_PAGES_SHA}` }),
-    // The same target a human runs to preview the site locally, so what CI
-    // publishes is what they saw.
+    // The site is assembled by the same target a human runs to preview it, so
+    // what CI publishes is what they saw — which means the runner needs `just`.
+    // Its absence is why the first published run failed at exit 127.
+    installJust(),
     new Step({ name: "Assemble the site", run: "just site" }),
     new Step({
       name: "Build with Jekyll",

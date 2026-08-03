@@ -25,10 +25,10 @@ import {
   Checkout,
   SetupNode,
 } from "@intentius/chant-lexicon-github";
+import { CHECKOUT_SHA, installJust } from "../workflows/shared";
 
 /** Pinned to the version #1394 pins for the k3d lexicon. One number, one place. */
 const K3D_VERSION = "v5.9.0";
-const JUST_VERSION = "1.36.0";
 const NODE_VERSION = "24";
 
 /**
@@ -40,7 +40,6 @@ const NODE_VERSION = "24";
  * floating. The tags these resolved from are in the comments so a bump is a
  * one-line diff with something to compare against.
  */
-const CHECKOUT_SHA = "11d5960a326750d5838078e36cf38b85af677262"; // v4
 const SETUP_NODE_SHA = "49933ea5288caeca8642d1e84afbd3f7d6820020"; // v4
 
 export const workflow = new Workflow({
@@ -50,17 +49,6 @@ export const workflow = new Workflow({
     pull_request: { branches: ["main"] },
   },
   permissions: { contents: "read" },
-});
-
-/** `just` is the documented interface, so CI drives the same targets a human does. */
-const installJust = new Step({
-  name: "Install just",
-  run: [
-    `curl -fsSL -o /tmp/just.tar.gz https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz`,
-    `tar -xzf /tmp/just.tar.gz -C /tmp just`,
-    `sudo mv /tmp/just /usr/local/bin/just`,
-    `just --version`,
-  ].join("\n"),
 });
 
 export const check = new Job({
@@ -73,7 +61,7 @@ export const check = new Job({
       cache: "npm",
       defaults: { step: { uses: `actions/setup-node@${SETUP_NODE_SHA}` } },
     }).step,
-    installJust,
+    installJust(),
     new Step({ name: "Install", run: "npm ci" }),
     // The same chain `just check` runs locally. If these ever diverge, the
     // thing people run before pushing stops predicting what CI does.
@@ -95,7 +83,7 @@ export const e2e = new Job({
       cache: "npm",
       defaults: { step: { uses: `actions/setup-node@${SETUP_NODE_SHA}` } },
     }).step,
-    installJust,
+    installJust(),
     new Step({
       name: "Install k3d",
       run: [

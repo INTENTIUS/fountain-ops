@@ -8,7 +8,7 @@ You drive this by its `just` targets. You do not need to know chant to use it.
 
 Everything below has been run end to end on a laptop. It takes about five minutes, most of it pulling images.
 
-**You need:** Docker running, plus `k3d`, `kubectl`, `node` and `just`. Check with:
+**You need:** Docker running, plus `k3d`, `kubectl`, `node`, `npm` and `just`. Check all but `just` with:
 
 ```bash
 just doctor
@@ -63,7 +63,9 @@ Conversations will not run without a real `SPRITES_TOKEN` — `just secret` writ
 
 ## The two axes
 
-**Target** — where the substrate runs. **Tier** — how durable it is. They are independent: any tier runs on any target.
+**Target** — where the substrate runs. **Tier** — how durable it is. Separate questions, so a tier does not imply a target or the reverse.
+
+They are not a free grid, though: `target=k3d tier=ha` is refused, because k3d defaults to the bundled Postgres and one Postgres cannot back an HA deployment. Add `postgres=cnpg` and it builds. The error says so.
 
 ```bash
 just preview kubernetes standard    # see it without applying anything
@@ -123,7 +125,7 @@ src/
   params.ts        the one place build params are read
   lib/targets.ts   target -> seam defaults
   lib/tiers.ts     tier -> durability, and the replica refusal
-  lib/seams.ts     seam validation and the CRD refusals
+  lib/seams.ts     seam modes, and the combinations that are refused
   app/             Deployment, Service, Namespace, headless Service
   data/            the bundled Postgres, and the CNPG cluster
   ingress/         Ingress, Certificate, and the Traefik IngressRoutes
@@ -132,4 +134,6 @@ src/
   observability/   ServiceMonitor, PrometheusRule
 ```
 
-Nothing reads `process.env`. Every input is a declared build parameter, so the same parameters produce the same manifests.
+No resource file reads `process.env` — every input is a declared build parameter, so the same parameters produce the same resources.
+
+One exception, and it is worth knowing: `chant.config.ts` reads `FOUNTAIN_ENV` directly for `ownership.env`, because ownership is config-level and build parameters are not available there. So `--param env=prod` labels resources `prod` while the ownership marker still says `dev` unless `FOUNTAIN_ENV` is set to match. Set both, or neither. [INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396).

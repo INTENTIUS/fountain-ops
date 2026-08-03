@@ -13,10 +13,10 @@ import type { ChantConfig } from "@intentius/chant";
  * picks coherent seam defaults; the tier scales the deployment and never
  * changes what fountain can do.
  *
- * Every seam has a mode that works with the k8s lexicon as it ships today, so
- * this deploys now. The modes that need CRDs chant does not generate yet are
- * listed in each seam's enum and rejected at build time with a pointer, rather
- * than emitting something that would not apply.
+ * Every seam mode is expressible against the k8s lexicon as it ships. What is
+ * rejected at build time is an incoherent combination -- a "highly available"
+ * single Postgres, a WAL archive with nothing archiving into it -- because
+ * those apply cleanly and then mean something other than they say.
  */
 
 const env = process.env.FOUNTAIN_ENV ?? "dev";

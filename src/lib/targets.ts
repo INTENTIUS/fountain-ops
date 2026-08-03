@@ -12,9 +12,11 @@
  * Separate questions, though, is not the same as a free grid, and the earlier
  * wording here ("any tier runs on any target") was tested and found false:
  *
- *   k3d + ha  ->  refused. k3d defaults to postgres="bundled", which is one
- *                 pod with a volume and cannot back an "ha" deployment. Adding
- *                 postgres="cnpg" builds it.
+ *   k3d + ha  ->  refused. Two of k3d's defaults are single-pod stand-ins:
+ *                 postgres="bundled" is one pod with a volume, and
+ *                 dataPlane="spritzer" holds every sandbox in memory. Neither
+ *                 can carry "ha", and they are refused one at a time — so
+ *                 naming postgres alone gets you the next error, not a build.
  *
  * A tier never fails because of the target as such. It fails because the seam
  * defaults that are coherent on that substrate cannot carry it, which is a

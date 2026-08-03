@@ -161,13 +161,26 @@ describe("the target x tier matrix", () => {
   });
 
   test("k3d + ha is the one refused, and names the seam that fixes it", () => {
-    // Not because the axes are coupled — because k3d defaults to the bundled
-    // single-instance Postgres. Naming the seam builds it, which is what makes
-    // this a refusal rather than an unsupported combination.
+    // Not because the axes are coupled — because k3d's defaults cannot carry
+    // ha. Naming the seams builds it, which is what makes this a refusal
+    // rather than an unsupported combination.
     expect(() => build("k3d", "ha")).toThrow(/postgres="cnpg"/);
+  });
+
+  test("k3d + ha needs both of its emulated seams named, not just postgres", () => {
+    // Two of k3d's defaults are single-pod stand-ins, so fixing one still
+    // leaves the other. The refusals surface one at a time, which is worth a
+    // test of its own: "add postgres=cnpg and it builds" was true when
+    // postgres was the only one, and the data plane seam quietly made it false.
     expect(() =>
       resolveSeams(targetShape("k3d").seams, { postgres: "cnpg" }, true),
+    ).toThrow(/dataPlane="sprites"/);
+
+    expect(() =>
+      resolveSeams(targetShape("k3d").seams, { postgres: "cnpg", dataPlane: "sprites" }, true),
     ).not.toThrow();
+  });
+});
 
 describe("the data plane seam", () => {
   test("k3d emulates it, kubernetes does not", () => {

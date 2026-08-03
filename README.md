@@ -103,7 +103,7 @@ The operator modes need their operator already installed. chant declares custom 
 | `tier=standard`, `tier=ha` | **Builds only.** The clustering wiring is emitted and unexercised |
 | `tls=cert-manager` | **Builds only** |
 | `monitoring=prometheus-operator` | **Builds only.** Emitted nothing at all until the `tier.metrics` fix |
-| `postgres=cnpg`, `backups=barman-pitr`, `ingress=traefik`, `secrets=infisical` | **Builds, and a real API server accepts the output.** No controller has reconciled any of it |
+| `postgres=cnpg`, `backups=barman-pitr`, `ingress=traefik`, `secrets=infisical` | **Builds, and a real API server accepts the output** (`just crds` then `just dry-run`). No controller has reconciled any of it |
 | `ops/` | **Empty.** No Ops exist yet |
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.

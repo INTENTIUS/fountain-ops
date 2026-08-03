@@ -158,6 +158,21 @@ cluster-up:
     fi
     kubectl config use-context "k3d-{{cluster}}" >/dev/null
 
+    # `--wait` returns when k3d is satisfied, which is not the same as the
+    # apiserver accepting connections. CI failed once with
+    #
+    #   error validating "dist/fountain.yaml": failed to download openapi:
+    #   Get "https://0.0.0.0:41171/openapi/v2": connect: connection refused
+    #
+    # three seconds after `secret` had talked to that same apiserver
+    # successfully. It passed on a re-run, which is the worst kind of failure:
+    # one that looks like a real breakage and goes away if you ignore it.
+    for i in $(seq 1 60); do
+      kubectl get --raw /readyz >/dev/null 2>&1 && break
+      [ "$i" = 60 ] && { echo "  ✗ apiserver never became ready" >&2; exit 1; }
+      sleep 2
+    done
+
 cluster-down:
     -k3d cluster delete "{{cluster}}"
 

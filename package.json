@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@intentius/chant": "^0.38.0",
+    "@intentius/chant-lexicon-github": "^0.38.0",
     "@intentius/chant-lexicon-k8s": "^0.38.0",
     "@intentius/chant-lexicon-temporal": "^0.38.0",
     "typescript": "^5.7.2",

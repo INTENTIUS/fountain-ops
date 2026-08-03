@@ -96,6 +96,29 @@ lint:
 test:
     npx vitest run
 
+# Render this repo's own CI from ci/pipeline.ts.
+ci:
+    npx chant build ci -o .github/workflows/ci.yml --format yaml
+
+# Fail if the committed workflow has drifted from its declaration.
+ci-check:
+    #!/usr/bin/env bash
+    # GitHub reads YAML from the default branch, so the rendered file has to be
+    # committed. That makes hand-editing it possible, and a hand edit would win
+    # silently — the declaration would still look authoritative while meaning
+    # nothing. This is the gate that keeps ci/pipeline.ts the source of truth.
+    set -euo pipefail
+    out="$(mktemp -t fountain-ci-XXXX.yml)"
+    trap 'rm -f "$out"' EXIT
+    npx chant build ci -o "$out" --format yaml >/dev/null
+    if ! diff -u .github/workflows/ci.yml "$out"; then
+      echo ""
+      echo "  .github/workflows/ci.yml is not what ci/pipeline.ts renders."
+      echo "  Run 'just ci' and commit the result."
+      exit 1
+    fi
+    echo "  ✓ committed workflow matches ci/pipeline.ts"
+
 # Does the source typecheck against the lexicon's own types?
 #
 # Worth its own step: `chant build` executes the source, so a property that

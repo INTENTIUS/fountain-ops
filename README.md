@@ -110,6 +110,21 @@ The operator modes need their operator already installed. chant declares custom 
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
 
+## CI
+
+Declared, not hand-written — `ci/pipeline.ts` renders `.github/workflows/ci.yml`.
+
+```bash
+just ci          # render it
+just ci-check    # fail if the committed YAML has drifted from the source
+```
+
+`ci-check` runs in CI too. GitHub reads YAML from the default branch, so the rendered file has to be committed, which makes hand-editing it possible — and a hand edit would win silently while the declaration still looked authoritative.
+
+Two jobs. **check** is the same `just check` you run locally. **e2e** stands the whole thing up on k3d, proves `/health/ready` reaches the database, re-runs `just up` to confirm the secret is not rotated, and dry-runs every seam against a real API server.
+
+Actions are pinned by commit SHA, tools by release version. A tag is a moving pointer.
+
 ## Secrets
 
 `just secret` generates the platform secret and never rotates an existing one. That matters more than it looks: `MASTER_SECRETS_KEY` regenerated over an existing database makes every stored secret unrecoverable, and it looks exactly like a successful deploy.
@@ -121,6 +136,7 @@ No secret value is in this repo, and none ever will be. The interim generation i
 ```
 chant.config.ts    lexicons, params, ownership, lint
 justfile           every target you need
+ci/pipeline.ts     this repo's own CI, declared
 src/
   params.ts        the one place build params are read
   lib/targets.ts   target -> seam defaults

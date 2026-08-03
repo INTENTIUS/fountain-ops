@@ -137,6 +137,24 @@ Reproducible on every conversation, including straight after a fresh rollout. Fi
 
 So today the emulated data plane proves the substrate can provision and address a sandbox, and nothing beyond that. `just verify-conversation` will tell you so rather than passing.
 
+### The conversation gate
+
+`just verify` asks `/health`. A 200 there says the release booted; it does not say it reached its database, resolved its secrets, provisioned a sandbox or streamed anything back. This does:
+
+```bash
+export FOUNTAIN_PASSWORD=...                          # not on the command line
+just verify-conversation you@example.com              # plumbing
+just verify-conversation you@example.com strict       # plumbing + a model replied
+```
+
+Both make a throwaway agent, open one conversation, and tear both down on the way out — including when an assertion fails, which is the case that matters.
+
+`plumbing` asserts a sandbox was provisioned, a turn ran, events streamed in order and the turn exited 0. That is a real check: it catches a broken Secret, an unreachable data plane, a migration that did not run.
+
+`strict` additionally asserts a model replied, and **refuses to run against `dataPlane=spritzer`**. The emulator answers exec by echoing the command back, so every plumbing assertion above passes with no model in the loop at all. A gate that cannot tell those two apart is worse than no gate, so this one fails closed rather than green.
+
+Against the local default, `plumbing` currently fails at the orphaned turn described above. That is the gate working.
+
 Even once that lands, three things are absent and no configuration brings them back: **live model reasoning**, **real tool execution** in the sandbox, and **true VM isolation** — spritzer answers exec with a scripted interpreter whose default is to echo the command back. A green local conversation would be a plumbing check. It is not somewhere to judge agent behaviour or sandbox security, and single-node Postgres is likewise not somewhere to benchmark durability.
 
 For real conversations set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret. That token is a **platform** credential, never a tenant one — it must not reach tenant-visible config, agent Environments or Vaults, or logs.

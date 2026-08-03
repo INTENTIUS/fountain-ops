@@ -4,6 +4,12 @@
 # its own, because when a deploy goes wrong you want the step, not the whole
 # thing again.
 
+# Everything `just` does is the local deployment, so it is owned, labelled and
+# bound as `local` — one name across the ownership marker, the instance label
+# and the k8s cluster binding in chant.config.ts. Without this the marker says
+# `dev` while behold reads `--env local` and matches nothing.
+export FOUNTAIN_ENV := "local"
+
 cluster := "fountain-local"
 ns      := "fountain"
 secret  := "fountain-secrets"

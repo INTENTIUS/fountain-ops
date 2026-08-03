@@ -1,0 +1,19 @@
+{
+  "name": "fountain-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted fountain, deployed by chant.",
+  "scripts": {
+    "build": "chant build src -o dist/fountain.yaml --format yaml",
+    "lint": "chant lint src",
+    "list": "chant list src",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@intentius/chant": "^0.37.0",
+    "@intentius/chant-lexicon-k8s": "^0.37.0",
+    "@intentius/chant-lexicon-temporal": "^0.37.0",
+    "vitest": "^3.2.4"
+  }
+}

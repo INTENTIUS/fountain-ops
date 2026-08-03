@@ -1,0 +1,92 @@
+/**
+ * Seams — who provides each dependency.
+ *
+ * Every seam has at least one mode that works with the k8s lexicon as it ships
+ * today. The modes that need CRDs chant does not generate yet are declared
+ * here anyway and refused at build time with the issue that unblocks them, so
+ * the gap is a named error rather than a manifest that will not apply.
+ *
+ * Refusing beats emitting: a Traefik IngressRoute assembled by hand as an
+ * untyped blob would build green and then fail at the cluster, which is the
+ * failure mode chant exists to remove.
+ */
+
+export type PostgresMode = "reference" | "cnpg";
+export type SecretsMode = "reference" | "infisical";
+export type IngressMode = "omit" | "ingress" | "traefik";
+export type TlsMode = "omit" | "cert-manager";
+export type BackupsMode = "omit" | "pg-dump" | "barman-pitr";
+export type MonitoringMode = "omit" | "prometheus-operator";
+
+/**
+ * A mode that needs a CRD chant cannot generate yet, and the issue that lands
+ * it. Written as an if-chain rather than a keyed table because a computed
+ * lookup is EVL003 and this module is read from resource files.
+ */
+function blockedBy(seam: string, mode: string): { needs: string; issue: string } | undefined {
+  if (seam === "postgres" && mode === "cnpg") {
+    return { needs: "postgresql.cnpg.io Cluster", issue: "INTENTIUS/chant#1319" };
+  }
+  if (seam === "backups" && mode === "barman-pitr") {
+    return { needs: "barmancloud.cnpg.io ObjectStore + CNPG ScheduledBackup", issue: "INTENTIUS/chant#1319" };
+  }
+  if (seam === "ingress" && mode === "traefik") {
+    return { needs: "traefik.io IngressRoute", issue: "INTENTIUS/chant#1320" };
+  }
+  if (seam === "secrets" && mode === "infisical") {
+    return { needs: "secrets.infisical.com InfisicalSecret", issue: "INTENTIUS/chant#1321" };
+  }
+  return undefined;
+}
+
+function check(seam: string, mode: string): void {
+  const blocked = blockedBy(seam, mode);
+  if (!blocked) return;
+  throw new Error(
+    `seam ${seam}="${mode}" needs ${blocked.needs}, which the k8s lexicon does not generate yet (${blocked.issue}). ` +
+      `Until it lands, use a mode that is available and provision this dependency outside chant.`,
+  );
+}
+
+export interface Seams {
+  postgres: PostgresMode;
+  secrets: SecretsMode;
+  ingress: IngressMode;
+  tls: TlsMode;
+  backups: BackupsMode;
+  monitoring: MonitoringMode;
+}
+
+/**
+ * Validate the seam set as a whole. Individual modes are checked for CRD
+ * availability; the combinations that cannot mean anything together are
+ * rejected here rather than emitting something incoherent.
+ */
+export function resolveSeams(s: Seams): Seams {
+  check("postgres", s.postgres);
+  check("secrets", s.secrets);
+  check("ingress", s.ingress);
+  check("backups", s.backups);
+
+  // PITR is a CNPG feature — it archives WAL from the cluster the operator
+  // runs. There is nothing to archive from a Postgres chant does not manage.
+  if (s.backups === "barman-pitr" && s.postgres !== "cnpg") {
+    throw new Error(
+      `backups="barman-pitr" needs postgres="cnpg" — WAL archiving is a property of the CNPG cluster. ` +
+        `For an external Postgres use backups="pg-dump", which dumps over the connection string.`,
+    );
+  }
+
+  // A certificate with nothing terminating TLS is an unused Secret and a
+  // misleading one: it looks like the deployment serves HTTPS.
+  if (s.tls === "cert-manager" && s.ingress === "omit") {
+    throw new Error(`tls="cert-manager" needs an ingress to terminate it — set ingress="ingress" or "traefik", or tls="omit".`);
+  }
+
+  return s;
+}
+
+/** True when the app's DATABASE_URL comes from a cluster chant declares. */
+export function postgresIsManaged(s: Seams): boolean {
+  return s.postgres === "cnpg";
+}

@@ -11,6 +11,7 @@ const base: Seams = {
   tls: "omit",
   backups: "omit",
   monitoring: "omit",
+  dataPlane: "sprites",
 };
 
 describe("tiers", () => {
@@ -160,13 +161,53 @@ describe("the target x tier matrix", () => {
   });
 
   test("k3d + ha is the one refused, and names the seam that fixes it", () => {
-    // Not because the axes are coupled — because k3d defaults to the bundled
-    // single-instance Postgres. Naming the seam builds it, which is what makes
-    // this a refusal rather than an unsupported combination.
+    // Not because the axes are coupled — because k3d's defaults cannot carry
+    // ha. Naming the seams builds it, which is what makes this a refusal
+    // rather than an unsupported combination.
     expect(() => build("k3d", "ha")).toThrow(/postgres="cnpg"/);
+  });
+
+  test("k3d + ha needs both of its emulated seams named, not just postgres", () => {
+    // Two of k3d's defaults are single-pod stand-ins, so fixing one still
+    // leaves the other. The refusals surface one at a time, which is worth a
+    // test of its own: "add postgres=cnpg and it builds" was true when
+    // postgres was the only one, and the data plane seam quietly made it false.
     expect(() =>
       resolveSeams(targetShape("k3d").seams, { postgres: "cnpg" }, true),
+    ).toThrow(/dataPlane="sprites"/);
+
+    expect(() =>
+      resolveSeams(targetShape("k3d").seams, { postgres: "cnpg", dataPlane: "sprites" }, true),
     ).not.toThrow();
+  });
+});
+
+describe("the data plane seam", () => {
+  test("k3d emulates it, kubernetes does not", () => {
+    // Offline there is no Sprites account, and a placeholder token against the
+    // real API is not a data plane — it is a 401 nobody sees until they try to
+    // talk to an agent. A real cluster gets the real API.
+    expect(targetShape("k3d").seams.dataPlane).toBe("spritzer");
+    expect(targetShape("kubernetes").seams.dataPlane).toBe("sprites");
+  });
+
+  test("either mode is expressible on either target", () => {
+    // The emulator in a real cluster is a staging choice, not an incoherence,
+    // and the real API from k3d is what you use once you have a token.
+    expect(resolveSeams(targetShape("kubernetes").seams, { dataPlane: "spritzer" }).dataPlane).toBe("spritzer");
+    expect(resolveSeams(targetShape("k3d").seams, { dataPlane: "sprites" }).dataPlane).toBe("sprites");
+  });
+
+  test("the emulator cannot back an ha deployment", () => {
+    // One pod holding every sprite, filesystem and checkpoint in memory. The
+    // same lie as a single Postgres behind the word "ha": it applies cleanly,
+    // and the first restart takes every running sandbox with it.
+    expect(() => resolveSeams({ ...base, dataPlane: "spritzer" }, {}, true)).toThrow(/in-memory emulator/);
+    expect(() => resolveSeams({ ...base, dataPlane: "spritzer" }, {}, true)).toThrow(/dataPlane="sprites"/);
+  });
+
+  test("the real API is fine at ha", () => {
+    expect(() => resolveSeams({ ...base, dataPlane: "sprites" }, {}, true)).not.toThrow();
   });
 });
 

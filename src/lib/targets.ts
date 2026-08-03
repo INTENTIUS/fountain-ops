@@ -12,9 +12,11 @@
  * Separate questions, though, is not the same as a free grid, and the earlier
  * wording here ("any tier runs on any target") was tested and found false:
  *
- *   k3d + ha  ->  refused. k3d defaults to postgres="bundled", which is one
- *                 pod with a volume and cannot back an "ha" deployment. Adding
- *                 postgres="cnpg" builds it.
+ *   k3d + ha  ->  refused. Two of k3d's defaults are single-pod stand-ins:
+ *                 postgres="bundled" is one pod with a volume, and
+ *                 dataPlane="spritzer" holds every sandbox in memory. Neither
+ *                 can carry "ha", and they are refused one at a time — so
+ *                 naming postgres alone gets you the next error, not a build.
  *
  * A tier never fails because of the target as such. It fails because the seam
  * defaults that are coherent on that substrate cannot carry it, which is a
@@ -57,6 +59,10 @@ export function targetShape(target: Target): TargetShape {
         tls: "omit",
         backups: "pg-dump",
         monitoring: "omit",
+        // The emulator, because there is no real Sprites account offline and a
+        // placeholder token against the real API is not a data plane, it is a
+        // 401 nobody sees until they try to talk to an agent.
+        dataPlane: "spritzer",
       },
     };
   }
@@ -72,6 +78,10 @@ export function targetShape(target: Target): TargetShape {
       tls: "omit",
       backups: "omit",
       monitoring: "omit",
+      // A real cluster talks to the real API. Running the emulator here is
+      // expressible and occasionally what a staging cluster wants; it is not
+      // what an unconfigured one should default to.
+      dataPlane: "sprites",
     },
   };
 }

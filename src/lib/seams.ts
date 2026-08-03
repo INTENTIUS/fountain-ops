@@ -17,6 +17,17 @@ export type IngressMode = "omit" | "ingress" | "traefik";
 export type TlsMode = "omit" | "cert-manager";
 export type BackupsMode = "omit" | "pg-dump" | "barman-pitr";
 export type MonitoringMode = "omit" | "prometheus-operator";
+/**
+ * Where fountain's sandboxes come from.
+ *
+ * `sprites` is the real Fly Sprites API. `spritzer` is an emulator of it that
+ * runs in the cluster, so the seam is a base URL and a token and nothing else
+ * — fountain cannot tell the difference, which is the whole reason a local
+ * deployment exercises the real control-plane path instead of a stub.
+ *
+ * What it is not is an agent runtime. See src/data/spritzer.ts.
+ */
+export type DataPlaneMode = "sprites" | "spritzer";
 
 export interface Seams {
   postgres: PostgresMode;
@@ -25,6 +36,7 @@ export interface Seams {
   tls: TlsMode;
   backups: BackupsMode;
   monitoring: MonitoringMode;
+  dataPlane: DataPlaneMode;
 }
 
 /** Explicit seam choices — anything left undefined falls to the tier's default. */
@@ -35,6 +47,7 @@ export interface SeamOverrides {
   tls?: TlsMode;
   backups?: BackupsMode;
   monitoring?: MonitoringMode;
+  dataPlane?: DataPlaneMode;
 }
 
 /**
@@ -52,6 +65,7 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
     tls: over.tls ?? defaults.tls,
     backups: over.backups ?? defaults.backups,
     monitoring: over.monitoring ?? defaults.monitoring,
+    dataPlane: over.dataPlane ?? defaults.dataPlane,
   };
 
   // A bundled Postgres is a single pod with a volume. Saying "highly available"
@@ -61,6 +75,17 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
     throw new Error(
       `postgres="bundled" is a single instance and cannot back an "ha" deployment — ` +
         `use postgres="cnpg" for a replicated database, or a managed one with postgres="reference".`,
+    );
+  }
+
+  // spritzer keeps every sprite, filesystem and checkpoint in memory in one
+  // pod. Calling that arrangement "highly available" is the same lie as a
+  // single Postgres backing an "ha" deployment: it applies cleanly, and the
+  // first pod restart takes every running sandbox with it.
+  if (s.dataPlane === "spritzer" && ha) {
+    throw new Error(
+      `dataPlane="spritzer" is an in-memory emulator in a single pod and cannot back an "ha" deployment — ` +
+        `use dataPlane="sprites" with a real SPRITES_TOKEN, or a non-ha tier for local work.`,
     );
   }
 

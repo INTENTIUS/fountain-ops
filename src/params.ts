@@ -51,6 +51,7 @@ export const seams: Seams = resolveSeams(
     tls: params.tls as Seams["tls"] | undefined,
     backups: params.backups as Seams["backups"] | undefined,
     monitoring: params.monitoring as Seams["monitoring"] | undefined,
+    dataPlane: params.dataPlane as Seams["dataPlane"] | undefined,
   },
   tier.clustered,
 );
@@ -88,6 +89,15 @@ export const backupSecretName =
 export const pitrSchedule = (params.pitrSchedule as string | undefined) ?? "0 47 2 * * *";
 assertSixFieldSchedule(pitrSchedule);
 
+// ── data plane seam ────────────────────────────────────────────────────────
+/**
+ * Pinned, not `latest`. The emulator decides what a local conversation does,
+ * so a floating tag would change the meaning of a green run without anything
+ * in this repo changing.
+ */
+export const spritzerImage =
+  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.4.1";
+
 // ── traefik seam ───────────────────────────────────────────────────────────
 /** Where the redirect middleware lives. Same namespace unless told otherwise. */
 export const traefikMiddlewareNamespace =
@@ -117,6 +127,13 @@ export const labels = {
  * is a local const — spreading an imported binding is EVL004.
  */
 export const serviceLabels = { ...labels, monitoring: "fountain-web" };
+
+/** The emulated data plane, likewise — its own component, its own selector. */
+export const spritzerLabels = {
+  "app.kubernetes.io/name": "fountain",
+  "app.kubernetes.io/instance": env,
+  "app.kubernetes.io/component": "spritzer",
+};
 
 /** The bundled Postgres gets its own identity so selectors do not collide. */
 export const pgLabels = {

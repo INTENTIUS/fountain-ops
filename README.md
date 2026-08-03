@@ -85,7 +85,15 @@ You can register, verify with `just verify-email`, and sign in. Conversations wi
 
 **Target** — where the substrate runs. **Tier** — how durable it is. Separate questions, so a tier does not imply a target or the reverse.
 
-They are not a free grid, though: `target=k3d tier=ha` is refused, because k3d defaults to the bundled Postgres and one Postgres cannot back an HA deployment. Add `postgres=cnpg` and it builds. The error says so.
+They are not a free grid, though: `target=k3d tier=ha` is refused, because two of k3d's defaults are single-pod stand-ins and neither can carry an HA deployment — the bundled Postgres, and the emulated data plane. Name both and it builds:
+
+```bash
+just preview k3d ha    # refused, and the error says which seam
+npx chant build src --param target=k3d --param tier=ha \
+  --param postgres=cnpg --param dataPlane=sprites
+```
+
+The refusals surface one at a time, so fixing `postgres` alone gets you the next error rather than a build.
 
 ```bash
 just preview kubernetes standard    # see it without applying anything
@@ -107,10 +115,31 @@ Each dependency has a mode. The target picks defaults that are coherent on that 
 | `tls` | `omit` · `cert-manager` |
 | `backups` | `omit` · `pg-dump` · `barman-pitr` |
 | `monitoring` | `omit` · `prometheus-operator` |
+| `dataPlane` | `sprites` · `spritzer` |
 
-Every mode is expressible. What is still refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates.
+Every mode is expressible. What is still refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates, an in-memory emulator behind the word "ha".
 
 The operator modes need their operator already installed. chant declares custom resources; it does not install controllers.
+
+## The data plane, and what a local conversation proves
+
+fountain reaches the sandboxes its agents run in through one credential and one base URL. `dataPlane=spritzer` points that URL at an emulator running in the cluster, so the seam is configuration and nothing else — the app is not built differently and cannot tell. That is what makes a local run exercise the real control-plane path instead of a stub of it.
+
+Provisioning works. Creating a conversation creates a sprite and populates it — fountain writes its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the conversation id into the sprite's filesystem, and spritzer then reports that sprite `running` with both files present.
+
+**The turn does not finish.** After provisioning, fountain reattaches to any existing runtime session, and that call asks spritzer's exec path over plain HTTP. spritzer serves it as a WebSocket only, so it answers `426` and the turn is abandoned:
+
+```
+event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
+```
+
+Reproducible on every conversation, including straight after a fresh rollout. Filed as [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18); it is one endpoint, and everything on either side of it already works.
+
+So today the emulated data plane proves the substrate can provision and address a sandbox, and nothing beyond that. `just verify-conversation` will tell you so rather than passing.
+
+Even once that lands, three things are absent and no configuration brings them back: **live model reasoning**, **real tool execution** in the sandbox, and **true VM isolation** — spritzer answers exec with a scripted interpreter whose default is to echo the command back. A green local conversation would be a plumbing check. It is not somewhere to judge agent behaviour or sandbox security, and single-node Postgres is likewise not somewhere to benchmark durability.
+
+For real conversations set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret. That token is a **platform** credential, never a tenant one — it must not reach tenant-visible config, agent Environments or Vaults, or logs.
 
 ## Status
 
@@ -121,7 +150,8 @@ The operator modes need their operator already installed. chant declares custom 
 | `target=k3d`, `tier=light` | **Verified** — stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | **Verified** — 23 tables, app connects |
 | Registering and signing in | **Verified** — registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
-| Holding a conversation | **Not possible.** `SPRITES_TOKEN` is a placeholder, so there is no data plane — [#15](https://github.com/INTENTIUS/fountain-ops/issues/15) |
+| Provisioning a sandbox | **Verified, against the emulated data plane.** A sprite is created and populated — the fountain skill and a `/home/sprite/.env` are written into its filesystem |
+| Completing a turn | **No.** The turn starts and is then orphaned: fountain's reattach calls exec over plain HTTP and spritzer answers `426` — [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) |
 | Admin | **Not possible.** `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 | `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
 | `target=kubernetes` | **Builds only.** Never applied to a real cluster |

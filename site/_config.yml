@@ -1,0 +1,27 @@
+# Jekyll config for the published site. GitHub's own jekyll-build-pages action
+# renders it, so this is the whole of the site's configuration — there is no
+# Gemfile and nothing to install.
+#
+# The page content is NOT here. `just site` copies README.md in as index.md at
+# build time, so the site and the README cannot disagree: there is one source
+# and it is the one contributors already edit.
+title: fountain-ops
+description: Self-hosted fountain, deployed by chant.
+theme: jekyll-theme-primer
+lang: en
+
+# Tables and fenced code, which the README uses heavily.
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# The README links to files by repo-relative path; those are not pages on the
+# site, so leave them pointing at GitHub rather than 404ing locally.
+relative_links:
+  enabled: false
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor

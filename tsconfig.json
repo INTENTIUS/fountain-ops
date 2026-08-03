@@ -16,6 +16,7 @@
     "src/**/*.ts",
     "test/**/*.ts",
     "ci/**/*.ts",
+    "ops/**/*.ts",
     "pages/**/*.ts",
     "workflows/**/*.ts",
     "chant.config.ts",

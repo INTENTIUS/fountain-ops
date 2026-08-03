@@ -37,7 +37,7 @@ Stood up and exercised, not reasoned about.
 | `backups=barman-pitr` | The `ObjectStore` and `ScheduledBackup` apply and the barman plugin is running after `just operators`, but **no backup has been taken or restored through it** |
 | `tls=cert-manager` (issuance) | cert-manager installs and is Available, but no certificate has been issued — a local cluster has no domain to issue against |
 | `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` | Build, and a real API server accepts the output. No controller has reconciled any of them: Traefik ships with k3s but nothing routes through it here, Infisical needs a server to talk to, and kube-prometheus-stack is not installed — [#22](https://github.com/INTENTIUS/fountain-ops/issues/22) |
-| `ops/` | Empty. No Ops exist yet |
+| `ops/` | One Op: `fountain-apply`. behold discovers it and offers Run. The other eleven verbs in [#3](https://github.com/INTENTIUS/fountain-ops/issues/3) do not exist |
 
 ## Why the table reads like this
 

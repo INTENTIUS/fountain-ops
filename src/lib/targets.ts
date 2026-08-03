@@ -46,6 +46,10 @@ export function targetShape(target: Target): TargetShape {
         tls: "omit",
         backups: "pg-dump",
         monitoring: "omit",
+        // The emulator, because there is no real Sprites account offline and a
+        // placeholder token against the real API is not a data plane, it is a
+        // 401 nobody sees until they try to talk to an agent.
+        dataPlane: "spritzer",
       },
     };
   }
@@ -61,6 +65,10 @@ export function targetShape(target: Target): TargetShape {
       tls: "omit",
       backups: "omit",
       monitoring: "omit",
+      // A real cluster talks to the real API. Running the emulator here is
+      // expressible and occasionally what a staging cluster wants; it is not
+      // what an unconfigured one should default to.
+      dataPlane: "sprites",
     },
   };
 }

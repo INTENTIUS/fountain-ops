@@ -111,6 +111,11 @@ export default {
     tls: { type: "string", enum: ["omit", "cert-manager"], required: false },
     backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], required: false },
     monitoring: { type: "string", enum: ["omit", "prometheus-operator"], required: false },
+    // Where the sandboxes agents run in come from. "spritzer" is an emulator
+    // of the Sprites API running in the cluster — the local default, because
+    // offline there is no account and a placeholder token against the real
+    // API is a 401 nobody sees until they talk to an agent.
+    dataPlane: { type: "string", enum: ["sprites", "spritzer"], required: false },
 
     // ── seam inputs ───────────────────────────────────────────────────────
     // postgres=reference: nothing here — DATABASE_URL lives in the Secret,
@@ -147,6 +152,10 @@ export default {
 
     // ── cnpg seam ────────────────────────────────────────────────────────
     cnpgImage: { type: "string", default: "ghcr.io/cloudnative-pg/postgresql:16.4" },
+    // dataPlane=spritzer. Pinned rather than :latest — the emulator decides
+    // what a local conversation does, so a floating tag would change what a
+    // green run means with nothing in this repo changing.
+    spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.4.1" },
     // Unset means the cluster's default StorageClass, which is what k3d wants.
     pgStorageClass: { type: "string", required: false },
     backupSecretName: { type: "string", default: "fountain-backup-s3-credentials" },

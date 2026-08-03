@@ -1,14 +1,14 @@
 /**
  * Seams — who provides each dependency.
  *
- * Every seam has at least one mode that works with the k8s lexicon as it ships
- * today. The modes that need CRDs chant does not generate yet are declared
- * here anyway and refused at build time with the issue that unblocks them, so
- * the gap is a named error rather than a manifest that will not apply.
+ * Every mode here is expressible: the k8s lexicon generates the CNPG, Traefik
+ * and Infisical CRDs, so nothing is refused for being ungeneratable any more.
  *
- * Refusing beats emitting: a Traefik IngressRoute assembled by hand as an
- * untyped blob would build green and then fail at the cluster, which is the
- * failure mode chant exists to remove.
+ * What is still refused is incoherence — combinations that would build green
+ * and mean something other than they say. Those checks live at the bottom of
+ * resolveSeams, and each one is a failure that is invisible on the cluster:
+ * a "highly available" single Postgres, a WAL archive with no cluster
+ * archiving into it, a certificate nothing terminates.
  */
 
 export type PostgresMode = "reference" | "bundled" | "cnpg";
@@ -17,36 +17,6 @@ export type IngressMode = "omit" | "ingress" | "traefik";
 export type TlsMode = "omit" | "cert-manager";
 export type BackupsMode = "omit" | "pg-dump" | "barman-pitr";
 export type MonitoringMode = "omit" | "prometheus-operator";
-
-/**
- * A mode that needs a CRD chant cannot generate yet, and the issue that lands
- * it. Written as an if-chain rather than a keyed table because a computed
- * lookup is EVL003 and this module is read from resource files.
- */
-function blockedBy(seam: string, mode: string): { needs: string; issue: string } | undefined {
-  if (seam === "postgres" && mode === "cnpg") {
-    return { needs: "postgresql.cnpg.io Cluster", issue: "INTENTIUS/chant#1319" };
-  }
-  if (seam === "backups" && mode === "barman-pitr") {
-    return { needs: "barmancloud.cnpg.io ObjectStore + CNPG ScheduledBackup", issue: "INTENTIUS/chant#1319" };
-  }
-  if (seam === "ingress" && mode === "traefik") {
-    return { needs: "traefik.io IngressRoute", issue: "INTENTIUS/chant#1320" };
-  }
-  if (seam === "secrets" && mode === "infisical") {
-    return { needs: "secrets.infisical.com InfisicalSecret", issue: "INTENTIUS/chant#1321" };
-  }
-  return undefined;
-}
-
-function check(seam: string, mode: string): void {
-  const blocked = blockedBy(seam, mode);
-  if (!blocked) return;
-  throw new Error(
-    `seam ${seam}="${mode}" needs ${blocked.needs}, which the k8s lexicon does not generate yet (${blocked.issue}). ` +
-      `Until it lands, use a mode that is available and provision this dependency outside chant.`,
-  );
-}
 
 export interface Seams {
   postgres: PostgresMode;
@@ -84,11 +54,6 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
     monitoring: over.monitoring ?? defaults.monitoring,
   };
 
-  check("postgres", s.postgres);
-  check("secrets", s.secrets);
-  check("ingress", s.ingress);
-  check("backups", s.backups);
-
   // A bundled Postgres is a single pod with a volume. Saying "highly available"
   // about it would be a lie the tier cannot make true, so refuse rather than
   // emit something that looks redundant and is not.
@@ -120,4 +85,25 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
 /** True when the app's DATABASE_URL comes from a cluster chant declares. */
 export function postgresIsManaged(s: Seams): boolean {
   return s.postgres === "cnpg";
+}
+
+/**
+ * CNPG schedules are six fields, leading with seconds. Kubernetes CronJob
+ * takes five.
+ *
+ * Nothing else catches this. The CRD types the field as a plain string, the
+ * cluster accepts either, and the five-field form written out of habit means
+ * something entirely different: "47 2 * * *" reads to a human as 02:47 and to
+ * CNPG as second 47 of minute 2 of every hour. The symptom is 24 base backups
+ * a day and no error anywhere.
+ */
+export function assertSixFieldSchedule(schedule: string): void {
+  const fields = schedule.trim().split(/\s+/).length;
+  if (fields === 6) return;
+  throw new Error(
+    `pitrSchedule "${schedule}" has ${fields} fields; CNPG needs six, leading with seconds. ` +
+      `A five-field cron is accepted by the cluster and means a different time — ` +
+      `"47 2 * * *" is 02:47 to every other cron and second 47 of every minute-2 to CNPG. ` +
+      `Prefix the seconds: "0 47 2 * * *".`,
+  );
 }

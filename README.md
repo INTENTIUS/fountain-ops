@@ -79,14 +79,16 @@ Each dependency has a mode. The target picks defaults that are coherent on that 
 
 | Seam | Modes |
 |---|---|
-| `postgres` | `bundled` · `reference` · `cnpg`\* |
-| `secrets` | `reference` · `infisical`\* |
-| `ingress` | `omit` · `ingress` · `traefik`\* |
+| `postgres` | `bundled` · `reference` · `cnpg` |
+| `secrets` | `reference` · `infisical` |
+| `ingress` | `omit` · `ingress` · `traefik` |
 | `tls` | `omit` · `cert-manager` |
-| `backups` | `omit` · `pg-dump` · `barman-pitr`\* |
+| `backups` | `omit` · `pg-dump` · `barman-pitr` |
 | `monitoring` | `omit` · `prometheus-operator` |
 
-\* needs a CRD chant does not generate yet. Asking for one is a build error naming the issue that lands it.
+Every mode is expressible. What is still refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates.
+
+The operator modes need their operator already installed. chant declares custom resources; it does not install controllers.
 
 ## Status
 
@@ -101,7 +103,7 @@ Each dependency has a mode. The target picks defaults that are coherent on that 
 | `tier=standard`, `tier=ha` | **Builds only.** The clustering wiring is emitted and unexercised |
 | `tls=cert-manager` | **Builds only** |
 | `monitoring=prometheus-operator` | **Builds only.** Emitted nothing at all until the `tier.metrics` fix |
-| `postgres=cnpg`, `ingress=traefik`, `secrets=infisical` | **Refused at build.** Blocked on chant CRD work |
+| `postgres=cnpg`, `backups=barman-pitr`, `ingress=traefik`, `secrets=infisical` | **Builds, and a real API server accepts the output** (`just crds` then `just dry-run`). No controller has reconciled any of it |
 | `ops/` | **Empty.** No Ops exist yet |
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
@@ -123,8 +125,9 @@ src/
   lib/tiers.ts     tier -> durability, and the replica refusal
   lib/seams.ts     seam validation and the CRD refusals
   app/             Deployment, Service, Namespace, headless Service
-  data/            the bundled Postgres
-  ingress/         Ingress, Certificate
+  data/            the bundled Postgres, and the CNPG cluster
+  ingress/         Ingress, Certificate, and the Traefik IngressRoutes
+  secrets/         the InfisicalSecret
   backup/          the pg_dump CronJob
   observability/   ServiceMonitor, PrometheusRule
 ```

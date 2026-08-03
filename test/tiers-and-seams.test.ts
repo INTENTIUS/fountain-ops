@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { resolveTier } from "../src/lib/tiers";
-import { resolveSeams, type Seams } from "../src/lib/seams";
+import { resolveSeams, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
 import { tierShape } from "../src/lib/tiers";
 import { targetShape } from "../src/lib/targets";
 
@@ -89,28 +89,58 @@ describe("seams", () => {
     expect(() => resolveSeams(base)).not.toThrow();
   });
 
-  // Each of these names the issue that unblocks it, so the error is a pointer
-  // rather than a dead end.
+  // These four used to be refused for needing CRDs chant could not generate.
+  // #1319, #1320 and #1321 landed them, so the modes are now ordinary choices
+  // and the only thing left to check is that nothing still blocks them.
   test.each([
-    ["postgres", "cnpg", "1319"],
-    ["backups", "barman-pitr", "1319"],
-    ["ingress", "traefik", "1320"],
-    ["secrets", "infisical", "1321"],
-  ])("seam %s=%s is refused with issue #%s", (seam, mode, issue) => {
+    ["postgres", "cnpg"],
+    ["ingress", "traefik"],
+    ["secrets", "infisical"],
+  ])("seam %s=%s is accepted", (seam, mode) => {
     const s = { ...base, [seam]: mode } as Seams;
-    // barman-pitr also needs cnpg; give it that so we assert the CRD refusal
-    // rather than the combination check.
-    if (mode === "barman-pitr") s.postgres = "cnpg";
-    expect(() => resolveSeams(s)).toThrow(new RegExp(issue));
+    expect(() => resolveSeams(s)).not.toThrow();
+  });
+
+  test("PITR is accepted alongside a CNPG cluster", () => {
+    expect(() => resolveSeams({ ...base, postgres: "cnpg", backups: "barman-pitr" })).not.toThrow();
   });
 
   test("PITR without a chant-managed Postgres is refused", () => {
-    // Reaching this needs the CRD refusal out of the way, which it is not yet —
-    // so assert the CRD refusal fires first and revisit when #1319 lands.
-    expect(() => resolveSeams({ ...base, backups: "barman-pitr" })).toThrow(/1319/);
+    // WAL archiving is a property of the cluster the operator runs. Against a
+    // Postgres chant does not manage there is nothing to archive from.
+    expect(() => resolveSeams({ ...base, backups: "barman-pitr" })).toThrow(/needs postgres="cnpg"/);
+  });
+
+  test("PITR against the bundled Postgres is refused too", () => {
+    // Same check as above, and it covers this: the bundled Postgres is a pod
+    // with a volume and no operator, so there is no WAL stream either. Worth
+    // its own case because it is the combination someone reaches for when
+    // they want durability without an operator.
+    expect(() =>
+      resolveSeams({ ...base, postgres: "bundled", backups: "barman-pitr" }),
+    ).toThrow(/needs postgres="cnpg"/);
   });
 
   test("a certificate with nothing to terminate it is refused", () => {
     expect(() => resolveSeams({ ...base, tls: "cert-manager", ingress: "omit" })).toThrow(/needs an ingress/);
+  });
+});
+
+describe("the CNPG backup schedule", () => {
+  test("accepts the six-field form", () => {
+    expect(() => assertSixFieldSchedule("0 47 2 * * *")).not.toThrow();
+  });
+
+  test("refuses the five-field form, which is the one people write", () => {
+    // "47 2 * * *" is 02:47 to every other cron on the cluster and second 47
+    // of minute 2 of every hour to CNPG. Both are accepted by the API server,
+    // so this check is the only thing between the two readings.
+    expect(() => assertSixFieldSchedule("47 2 * * *")).toThrow(/six/);
+  });
+
+  test("says what the corrected value looks like", () => {
+    // An error that only reports the count leaves the reader to guess which
+    // end the extra field goes on.
+    expect(() => assertSixFieldSchedule("47 2 * * *")).toThrow(/"0 47 2 \* \* \*"/);
   });
 });

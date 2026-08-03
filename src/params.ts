@@ -13,7 +13,7 @@
 import { params } from "@intentius/chant/params";
 import { resolveTier, type Tier } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
-import { resolveSeams, type Seams } from "./lib/seams";
+import { resolveSeams, assertSixFieldSchedule, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
@@ -68,6 +68,40 @@ export const backupSchedule = (params.backupSchedule as string | undefined) ?? "
 export const backupRetentionDays = (params.backupRetentionDays as number | undefined) ?? tier.retentionDays;
 export const backupBucket = (params.backupBucket as string | undefined) ?? "fountain-backups";
 export const backupS3Endpoint = (params.backupS3Endpoint as string | undefined) ?? target.s3Endpoint;
+
+// ── cnpg seam ──────────────────────────────────────────────────────────────
+export const cnpgImage =
+  (params.cnpgImage as string | undefined) ?? "ghcr.io/cloudnative-pg/postgresql:16.4";
+/** undefined means the cluster's default StorageClass, which is right on k3d. */
+export const pgStorageClass = params.pgStorageClass as string | undefined;
+export const backupSecretName =
+  (params.backupSecretName as string | undefined) ?? "fountain-backup-s3-credentials";
+/**
+ * The CNPG base-backup schedule. Deliberately NOT `backupSchedule`.
+ *
+ * CNPG cron is six fields, leading with seconds; the pg_dump CronJob above
+ * takes the five Kubernetes uses. Sharing one parameter would mean whichever
+ * seam was off got a schedule in the wrong dialect the moment it was switched
+ * on — accepted by both, meaning something different in each.
+ */
+export const pitrSchedule = (params.pitrSchedule as string | undefined) ?? "0 47 2 * * *";
+assertSixFieldSchedule(pitrSchedule);
+
+// ── traefik seam ───────────────────────────────────────────────────────────
+/** Where the redirect middleware lives. Same namespace unless told otherwise. */
+export const traefikMiddlewareNamespace =
+  (params.traefikMiddlewareNamespace as string | undefined) ?? namespace;
+
+// ── infisical seam ─────────────────────────────────────────────────────────
+export const infisicalHostApi =
+  (params.infisicalHostApi as string | undefined) ?? "http://infisical.infisical.svc.cluster.local:8080";
+export const infisicalIdentityId = (params.infisicalIdentityId as string | undefined) ?? "";
+export const infisicalProjectSlug = (params.infisicalProjectSlug as string | undefined) ?? "";
+export const infisicalEnvSlug = (params.infisicalEnvSlug as string | undefined) ?? "prod";
+export const infisicalSecretsPath = (params.infisicalSecretsPath as string | undefined) ?? "/";
+export const infisicalServiceAccount =
+  (params.infisicalServiceAccount as string | undefined) ?? "fountain-infisical";
+export const infisicalResyncSeconds = (params.infisicalResyncSeconds as number | undefined) ?? 60;
 
 /** Labels every resource carries, so a human and `--owned` agree on what this is. */
 export const labels = {

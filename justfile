@@ -57,14 +57,13 @@ cluster-down:
 # ── secrets ────────────────────────────────────────────────────────────────
 
 # Mint the platform secret, once. Never rotates an existing one.
-#
-# This is the interim of INTENTIUS/chant#1365 — the values are generated here
-# rather than declared, because a value in source is the one thing chant will
-# not do. The read-then-write is the important part: MASTER_SECRETS_KEY
-# regenerated over an existing database makes every stored secret
-# unrecoverable, and it looks exactly like a successful deploy.
 secret:
     #!/usr/bin/env bash
+    # The interim of INTENTIUS/chant#1365 — values are generated here rather
+    # than declared, because a value in source is the one thing chant will not
+    # do. The read-then-write is the important part: MASTER_SECRETS_KEY
+    # regenerated over an existing database makes every stored secret
+    # unrecoverable, and it looks exactly like a successful deploy.
     set -euo pipefail
     kubectl create namespace "{{ns}}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     if kubectl get secret "{{secret}}" -n "{{ns}}" >/dev/null 2>&1; then
@@ -146,3 +145,39 @@ backup-now:
 # What the deployment would look like elsewhere, without applying anything.
 preview target="kubernetes" tier="standard":
     npx chant build src --format yaml --param target={{target}} --param tier={{tier}}
+
+# Ask a real API server whether it would accept the output.
+dry-run *ARGS:
+    #!/usr/bin/env bash
+    # `just check` proves the manifests build. This proves a Kubernetes API
+    # server validates them against the actual CRD schemas — a different
+    # question, and the one that catches a field chant is happy to serialize
+    # and the cluster rejects. Nothing is created; --dry-run=server validates.
+    #
+    # Needs the CRDs for whichever seams are on: `just crds`.
+    set -euo pipefail
+    out="$(mktemp -t fountain-dryrun-XXXX.yaml)"
+    trap 'rm -f "$out"' EXIT
+    npx chant build src -o "$out" --format yaml {{ARGS}}
+    kubectl apply --dry-run=server -f "$out"
+
+# Install the CRDs the operator seams declare against, without the operators.
+crds:
+    #!/usr/bin/env bash
+    # Enough to validate manifests and nothing else: no controller runs, so
+    # nothing is reconciled. Installing the operators is a separate decision
+    # and not one this repo makes for you.
+    set -euo pipefail
+    apply() { kubectl apply --server-side --force-conflicts -f "$1" >/dev/null && echo "  ✓ $2"; }
+    cnpg=https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/config/crd/bases
+    apply "$cnpg/postgresql.cnpg.io_clusters.yaml"         "cnpg Cluster"
+    apply "$cnpg/postgresql.cnpg.io_scheduledbackups.yaml"  "cnpg ScheduledBackup"
+    apply "https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/v0.14.0/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml" "barman ObjectStore"
+    traefik=https://raw.githubusercontent.com/traefik/traefik-helm-chart/v41.1.0/traefik/crds
+    apply "$traefik/traefik.io_ingressroutes.yaml" "traefik IngressRoute"
+    apply "$traefik/traefik.io_middlewares.yaml"   "traefik Middleware"
+    apply "https://raw.githubusercontent.com/Infisical/kubernetes-operator/infisical-k8-operator/v0.11.7/config/crd/bases/secrets.infisical.com_infisicalsecrets.yaml" "InfisicalSecret"
+    prom=https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd
+    apply "$prom/monitoring.coreos.com_servicemonitors.yaml" "ServiceMonitor"
+    apply "$prom/monitoring.coreos.com_prometheusrules.yaml" "PrometheusRule"
+    apply "https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.crds.yaml" "cert-manager"

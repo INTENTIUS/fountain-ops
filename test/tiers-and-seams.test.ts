@@ -1,6 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { resolveTier } from "../src/lib/tiers";
 import { resolveSeams, type Seams } from "../src/lib/seams";
+import { tierShape } from "../src/lib/tiers";
+import { targetShape } from "../src/lib/targets";
 
 const base: Seams = {
   postgres: "reference",
@@ -12,14 +14,14 @@ const base: Seams = {
 };
 
 describe("tiers", () => {
-  test("light and production are single-replica and unclustered", () => {
+  test("light and standard are single-replica and unclustered", () => {
     expect(resolveTier("light").replicas).toBe(1);
     expect(resolveTier("light").clustered).toBe(false);
-    expect(resolveTier("production").clustered).toBe(false);
+    expect(resolveTier("standard").clustered).toBe(false);
   });
 
-  test("production-ha is clustered, because >1 replica requires it", () => {
-    const ha = resolveTier("production-ha");
+  test("ha is clustered, because >1 replica requires it", () => {
+    const ha = resolveTier("ha");
     expect(ha.replicas).toBeGreaterThan(1);
     expect(ha.clustered).toBe(true);
   });
@@ -28,15 +30,57 @@ describe("tiers", () => {
   // worse than a build error, because it breaks streaming for some users only.
   test("more replicas than the tier can cluster is refused", () => {
     expect(() => resolveTier("light", 2)).toThrow(/must form an Erlang cluster/);
-    expect(() => resolveTier("production", 3)).toThrow(/production-ha/);
+    expect(() => resolveTier("standard", 3)).toThrow(/tier "ha"/);
   });
 
   test("an override the tier can support is honoured", () => {
-    expect(resolveTier("production-ha", 4).replicas).toBe(4);
+    expect(resolveTier("ha", 4).replicas).toBe(4);
   });
 
   test("zero replicas is refused", () => {
     expect(() => resolveTier("light", 0)).toThrow(/at least 1/);
+  });
+});
+
+describe("target and tier are independent axes", () => {
+  test("the target picks seam defaults, not durability", () => {
+    const k3d = targetShape("k3d");
+    expect(k3d.emulated).toBe(true);
+    expect(k3d.seams.postgres).toBe("bundled");
+    expect(k3d.seams.ingress).toBe("omit");
+    // floci, so the backup path is exercised offline rather than at a restore.
+    expect(k3d.seams.backups).toBe("pg-dump");
+    expect(k3d.s3Endpoint).toContain("4566");
+  });
+
+  test("a real cluster assumes no operators are installed", () => {
+    const k = targetShape("kubernetes");
+    expect(k.emulated).toBe(false);
+    expect(k.seams.postgres).toBe("reference");
+    expect(k.seams.monitoring).toBe("omit");
+  });
+
+  // The whole point of splitting the axes: a tier means the same thing
+  // wherever it runs.
+  test("a tier means the same thing on every target", () => {
+    expect(tierShape("ha").replicas).toBe(tierShape("ha").replicas);
+    expect(tierShape("light").retentionDays).toBeLessThan(tierShape("ha").retentionDays);
+    expect(tierShape("light").clustered).toBe(false);
+  });
+
+  test("an override replaces one seam and leaves the target's others alone", () => {
+    const t = targetShape("kubernetes");
+    const s = resolveSeams(t.seams, { monitoring: "prometheus-operator" });
+    expect(s.monitoring).toBe("prometheus-operator");
+    expect(s.postgres).toBe("reference");
+    expect(s.ingress).toBe("ingress");
+  });
+
+  // A single-pod Postgres cannot back an HA claim, and saying otherwise is the
+  // kind of lie that is only discovered during an outage.
+  test("a bundled Postgres cannot back an ha deployment", () => {
+    const t = targetShape("k3d");
+    expect(() => resolveSeams(t.seams, {}, true)).toThrow(/single instance/);
   });
 });
 

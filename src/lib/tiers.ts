@@ -1,63 +1,67 @@
 /**
- * What a tier actually changes.
+ * Tiers — how durable the deployment is, and nothing else.
  *
- * A tier is not a size label — it decides whether the deployment carries the
- * wiring its replica count requires. fountain routes conversations through
- * per-conversation processes; above one replica the pods must form a real
- * Erlang cluster or they run as isolated islands and conversation streaming
- * breaks for whichever pod did not spawn the conversation. It fails quietly,
- * under load, for some users.
+ * A tier scales the same deployment up or down. It never changes what fountain
+ * can do: the same API, the same primitives, the same Sprites data plane at
+ * every tier. `light` is not a cut-down fountain, it is a smaller one.
  *
- * So `replicas` and `clustered` are decided together here rather than left as
- * independent knobs. Asking for two replicas at `light` is a build error, not
- * a silent island.
+ * What it moves is durability — replica count and the clustering that count
+ * requires, resource floors, and how long backups are kept.
  *
- * Written as an if-chain over literals rather than a keyed table: a computed
- * lookup is EVL003, and this module is read by resource files.
+ * The one thing that is not a free knob is the replica count. fountain routes
+ * conversations through per-conversation processes; above one replica the pods
+ * must form a real Erlang cluster or they run as isolated islands and
+ * conversation streaming breaks for whichever pod did not spawn the
+ * conversation. It fails quietly, under load, for some users. So `replicas` and
+ * `clustered` are decided together and asking for two replicas at a tier that
+ * cannot cluster is a build error.
+ *
+ * Written as an if-chain over literals: a computed lookup is EVL003, and this
+ * module is read from resource files.
  */
 
-export type Tier = "light" | "production" | "production-ha";
+export type Tier = "light" | "standard" | "ha";
 
 export interface TierShape {
   replicas: number;
   /** Erlang distribution + headless Service + libcluster DNS discovery. */
   clustered: boolean;
-  /** Whether metrics wiring is emitted when the monitoring seam allows it. */
-  metrics: boolean;
   resources: { cpu: string; memory: string; cpuLimit: string; memoryLimit: string };
+  /** Days of backups kept, where the backup seam is on. */
+  retentionDays: number;
 }
 
-function shapeFor(tier: Tier): TierShape {
+export function tierShape(tier: Tier): TierShape {
   if (tier === "light") {
     return {
       replicas: 1,
       clustered: false,
-      metrics: false,
       resources: { cpu: "100m", memory: "512Mi", cpuLimit: "500m", memoryLimit: "1Gi" },
+      retentionDays: 7,
     };
   }
-  if (tier === "production") {
+  if (tier === "standard") {
     return {
       replicas: 1,
       clustered: false,
-      metrics: true,
       resources: { cpu: "250m", memory: "1Gi", cpuLimit: "1", memoryLimit: "2Gi" },
+      retentionDays: 14,
     };
   }
   return {
     replicas: 2,
     clustered: true,
-    metrics: true,
     resources: { cpu: "500m", memory: "1Gi", cpuLimit: "2", memoryLimit: "2Gi" },
+    retentionDays: 30,
   };
 }
 
 /**
- * Resolve a tier to its shape, honouring a replica override only where the
- * tier can actually support it.
+ * Resolve a tier, honouring a replica override only where the tier can
+ * actually support it.
  */
 export function resolveTier(tier: Tier, replicaOverride?: number): TierShape {
-  const shape = shapeFor(tier);
+  const shape = tierShape(tier);
   if (replicaOverride === undefined) return shape;
 
   if (replicaOverride < 1) {
@@ -66,13 +70,13 @@ export function resolveTier(tier: Tier, replicaOverride?: number): TierShape {
   if (replicaOverride > 1 && !shape.clustered) {
     throw new Error(
       `tier "${tier}" cannot run ${replicaOverride} replicas: above one replica the pods must form an Erlang cluster, ` +
-        `or conversation streaming breaks for whichever pod did not spawn the conversation. Use tier "production-ha".`,
+        `or conversation streaming breaks for whichever pod did not spawn the conversation. Use tier "ha".`,
     );
   }
   return {
     replicas: replicaOverride,
     clustered: shape.clustered,
-    metrics: shape.metrics,
     resources: shape.resources,
+    retentionDays: shape.retentionDays,
   };
 }

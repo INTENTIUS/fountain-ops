@@ -5,8 +5,13 @@ import type { ChantConfig } from "@intentius/chant";
  *
  * Two axes decide what this project emits:
  *
- *   tier   — how much fountain you are running (light / production / production-ha)
+ *   target — where the substrate runs (k3d / kubernetes)
+ *   tier   — how durable it is (light / standard / ha)
  *   seams  — who provides each dependency (postgres, secrets, ingress, tls, backups, metrics)
+ *
+ * target and tier are independent: any tier runs on any target. The target
+ * picks coherent seam defaults; the tier scales the deployment and never
+ * changes what fountain can do.
  *
  * Every seam has a mode that works with the k8s lexicon as it ships today, so
  * this deploys now. The modes that need CRDs chant does not generate yet are
@@ -44,6 +49,14 @@ export default {
       // Manifest files export resources for the build to collect, not for each
       // other. "Never referenced in this file" is the normal case here.
       COR004: "off",
+      // Postgres writes to its data directory and the backup job writes a dump
+      // to its work volume. A read-only root filesystem is right for the app
+      // tier, which has one, and wrong for these two.
+      WK8203: "off",
+      // A CPU limit throttles rather than protects: under contention the
+      // database gets slower instead of shedding load, and a stalled dump is a
+      // missing backup. Requests are set; limits are deliberate omissions.
+      WK8201: "off",
     },
   },
 
@@ -63,37 +76,48 @@ export default {
     scheme: { type: "string", enum: ["http", "https"], default: "http" },
     image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.3.0" },
 
-    // ── tier ──────────────────────────────────────────────────────────────
-    // light          1 replica, no clustering, external Postgres
-    // production     1 replica, CNPG, backups, metrics, TLS
-    // production-ha  2+ replicas WITH Erlang clustering (see lib/tiers.ts —
-    //                more replicas without it silently breaks conversation
-    //                streaming, so the tier carries the wiring, not a number)
+    // ── the two axes ──────────────────────────────────────────────────────
+    // They are independent: any tier runs on any target.
+    //
+    // target — where the substrate runs. Picks coherent seam defaults for that
+    //          substrate and nothing else.
+    target: {
+      type: "string",
+      enum: ["k3d", "kubernetes"],
+      default: "k3d",
+      env: "FOUNTAIN_TARGET",
+    },
+    // tier — how durable the deployment is. Scales the same deployment; never
+    //        changes what fountain can do. `ha` carries the Erlang clustering
+    //        its replica count requires — see src/lib/tiers.ts.
     tier: {
       type: "string",
-      enum: ["light", "production", "production-ha"],
+      enum: ["light", "standard", "ha"],
       default: "light",
       env: "FOUNTAIN_TIER",
     },
     replicas: { type: "number", required: false },
 
     // ── seams ─────────────────────────────────────────────────────────────
+    // Unset means "take the target's default" — see src/lib/tiers.ts. Setting one
+    // replaces exactly that seam and leaves the rest of the tier profile alone,
+    // so there is no default here to disagree with the tier's.
+    //
     // `reference` means "it already exists, here is how to reach it".
     // `omit` means "this deployment does not have one".
-    postgres: { type: "string", enum: ["reference", "cnpg"], default: "reference" },
-    secrets: { type: "string", enum: ["reference", "infisical"], default: "reference" },
-    ingress: { type: "string", enum: ["omit", "ingress", "traefik"], default: "ingress" },
-    tls: { type: "string", enum: ["omit", "cert-manager"], default: "omit" },
-    backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], default: "omit" },
-    monitoring: { type: "string", enum: ["omit", "prometheus-operator"], default: "omit" },
+    postgres: { type: "string", enum: ["reference", "bundled", "cnpg"], required: false },
+    secrets: { type: "string", enum: ["reference", "infisical"], required: false },
+    ingress: { type: "string", enum: ["omit", "ingress", "traefik"], required: false },
+    tls: { type: "string", enum: ["omit", "cert-manager"], required: false },
+    backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], required: false },
+    monitoring: { type: "string", enum: ["omit", "prometheus-operator"], required: false },
 
     // ── seam inputs ───────────────────────────────────────────────────────
     // postgres=reference: nothing here — DATABASE_URL lives in the Secret,
     // because a connection string with a password in it is not config.
     // postgres=cnpg:
-    pgStorageClass: { type: "string", required: false },
     pgStorageSize: { type: "string", default: "10Gi" },
-    pgImage: { type: "string", default: "ghcr.io/cloudnative-pg/postgresql:18.4-standard-trixie" },
+    pgImage: { type: "string", default: "postgres:16" },
     // secrets=reference: the name of the Secret you created out of band.
     secretName: { type: "string", default: "fountain-secrets" },
     // secrets=infisical:
@@ -101,14 +125,18 @@ export default {
     infisicalEnvSlug: { type: "string", default: "prod" },
     infisicalIdentityId: { type: "string", required: false },
     infisicalHostApi: { type: "string", required: false },
+    // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
+    emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
+    registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
     // tls=cert-manager:
     clusterIssuer: { type: "string", default: "letsencrypt-production" },
     // ingress=ingress:
     ingressClassName: { type: "string", required: false },
     // backups:
     backupSchedule: { type: "string", default: "17 3 * * *" },
-    backupRetentionDays: { type: "number", default: 14 },
-    backupBucket: { type: "string", required: false },
+    // Unset takes the tier's retention — it is durability, not a seam input.
+    backupRetentionDays: { type: "number", required: false },
+    backupBucket: { type: "string", default: "fountain-backups" },
     backupS3Endpoint: { type: "string", required: false },
   },
 } satisfies ChantConfig;

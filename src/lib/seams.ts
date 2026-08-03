@@ -11,7 +11,7 @@
  * failure mode chant exists to remove.
  */
 
-export type PostgresMode = "reference" | "cnpg";
+export type PostgresMode = "reference" | "bundled" | "cnpg";
 export type SecretsMode = "reference" | "infisical";
 export type IngressMode = "omit" | "ingress" | "traefik";
 export type TlsMode = "omit" | "cert-manager";
@@ -57,16 +57,47 @@ export interface Seams {
   monitoring: MonitoringMode;
 }
 
+/** Explicit seam choices — anything left undefined falls to the tier's default. */
+export interface SeamOverrides {
+  postgres?: PostgresMode;
+  secrets?: SecretsMode;
+  ingress?: IngressMode;
+  tls?: TlsMode;
+  backups?: BackupsMode;
+  monitoring?: MonitoringMode;
+}
+
 /**
- * Validate the seam set as a whole. Individual modes are checked for CRD
- * availability; the combinations that cannot mean anything together are
- * rejected here rather than emitting something incoherent.
+ * Layer explicit choices over the tier's defaults, then validate the result.
+ *
+ * The tier picks a coherent starting point; an override replaces exactly one
+ * seam and leaves the rest alone. Validation runs on the merged set, so an
+ * override that breaks a combination is caught the same as an authored one.
  */
-export function resolveSeams(s: Seams): Seams {
+export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = false): Seams {
+  const s: Seams = {
+    postgres: over.postgres ?? defaults.postgres,
+    secrets: over.secrets ?? defaults.secrets,
+    ingress: over.ingress ?? defaults.ingress,
+    tls: over.tls ?? defaults.tls,
+    backups: over.backups ?? defaults.backups,
+    monitoring: over.monitoring ?? defaults.monitoring,
+  };
+
   check("postgres", s.postgres);
   check("secrets", s.secrets);
   check("ingress", s.ingress);
   check("backups", s.backups);
+
+  // A bundled Postgres is a single pod with a volume. Saying "highly available"
+  // about it would be a lie the tier cannot make true, so refuse rather than
+  // emit something that looks redundant and is not.
+  if (s.postgres === "bundled" && ha) {
+    throw new Error(
+      `postgres="bundled" is a single instance and cannot back an "ha" deployment — ` +
+        `use postgres="cnpg" for a replicated database, or a managed one with postgres="reference".`,
+    );
+  }
 
   // PITR is a CNPG feature — it archives WAL from the cluster the operator
   // runs. There is nothing to archive from a Postgres chant does not manage.

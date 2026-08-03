@@ -30,8 +30,9 @@ export const publicUrl = `${scheme}://${host}`;
 export const httpsPublicUrl = scheme === "https";
 
 // ── the two axes ───────────────────────────────────────────────────────────
-// target = where the substrate runs. tier = how durable it is. Independent:
-// any tier runs on any target.
+// target = where the substrate runs. tier = how durable it is. Separate
+// questions, but not every pair builds — resolveSeams refuses the ones whose
+// merged seams are incoherent. See lib/targets.ts.
 export const targetName = (params.target as Target | undefined) ?? "k3d";
 export const target = targetShape(targetName);
 export const tierName = (params.tier as Tier | undefined) ?? "light";

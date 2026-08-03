@@ -2,13 +2,24 @@
  * Targets — where the substrate runs.
  *
  * A target picks the substrate and, with it, which seam defaults are coherent
- * there. It does not decide how durable the deployment is; that is the tier,
- * and the two are independent. Any tier runs on any target.
+ * there. It does not decide how durable the deployment is; that is the tier.
  *
  * This axis exists separately from the tier because they answer different
  * questions and mixing them produces knobs that mean two things at once. A
  * "local" tier is really a k3d target at the light tier, and collapsing those
  * into one word is what makes people ask whether `production` implies a cloud.
+ *
+ * Separate questions, though, is not the same as a free grid, and the earlier
+ * wording here ("any tier runs on any target") was tested and found false:
+ *
+ *   k3d + ha  ->  refused. k3d defaults to postgres="bundled", which is one
+ *                 pod with a volume and cannot back an "ha" deployment. Adding
+ *                 postgres="cnpg" builds it.
+ *
+ * A tier never fails because of the target as such. It fails because the seam
+ * defaults that are coherent on that substrate cannot carry it, which is a
+ * refusal you can always resolve by naming the seam. Five of the six
+ * combinations build; the sixth says which seam to set.
  *
  * Written as an if-chain over literals: a computed lookup is EVL003, and this
  * module is read from resource files.

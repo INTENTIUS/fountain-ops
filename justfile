@@ -23,11 +23,32 @@ down: cluster-down
 
 # ── preflight ──────────────────────────────────────────────────────────────
 
-# What this needs on the machine, and whether it is there.
+# What this needs on the machine, whether it is there, and how to get it.
+#
+# A tool reported as `missing` and nothing else is where someone trying this
+# out stops trying it out, so every ✗ carries the install line for the platform
+# it is running on.
 doctor:
     #!/usr/bin/env bash
     set -uo pipefail
     ok=0
+
+    # Two answers per tool: how to install it on this platform, and the
+    # platform-independent fallback for anyone without a package manager.
+    case "$(uname -s)" in
+      Darwin) pm="brew install" ;;
+      Linux)  pm="your package manager" ;;
+      *)      pm="" ;;
+    esac
+    hint() {
+      case "$1" in
+        docker)  echo "https://docs.docker.com/get-started/get-docker/" ;;
+        k3d)     echo "curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash" ;;
+        kubectl) echo "https://kubernetes.io/docs/tasks/tools/#kubectl" ;;
+        node|npm) echo "https://nodejs.org/en/download  (node ships npm)" ;;
+      esac
+    }
+
     for t in docker k3d kubectl node npm; do
       # kubectl takes `version`, not `--version`, and prints nothing for the
       # latter — so ask each tool the way it wants to be asked.
@@ -35,11 +56,28 @@ doctor:
         kubectl) v="$(kubectl version --client -o yaml 2>/dev/null | awk -F': ' '/gitVersion/{print $2; exit}')" ;;
         *)       v="$($t --version 2>/dev/null | head -1)" ;;
       esac
-      if command -v "$t" >/dev/null 2>&1; then printf "  ✓ %-8s %s\n" "$t" "$(printf '%s' "$v" | cut -c1-48)"
-      else printf "  ✗ %-8s missing\n" "$t"; ok=1; fi
+      if command -v "$t" >/dev/null 2>&1; then
+        printf "  ✓ %-8s %s\n" "$t" "$(printf '%s' "$v" | cut -c1-48)"
+      else
+        ok=1
+        if [ "$pm" = "brew install" ]; then printf "  ✗ %-8s missing — brew install %s\n" "$t" "$t"
+        else                                printf "  ✗ %-8s missing\n" "$t"; fi
+        printf "             %s\n" "$(hint "$t")"
+      fi
     done
-    if docker info >/dev/null 2>&1; then echo "  ✓ docker   daemon running"
-    else echo "  ✗ docker   daemon not running"; ok=1; fi
+
+    # Installed and not running is a different problem from not installed, and
+    # has a different fix. Only ask once the binary is actually there.
+    if ! command -v docker >/dev/null 2>&1; then :
+    elif docker info >/dev/null 2>&1; then echo "  ✓ docker   daemon running"
+    else
+      ok=1
+      echo "  ✗ docker   installed, but the daemon is not running"
+      echo "             start Docker Desktop, or: sudo systemctl start docker"
+    fi
+
+    # `just` is not in the loop above for the obvious reason: you are running it.
+    if [ "$ok" = 0 ]; then echo ""; echo "  everything this needs is here. Next:  npm install && just up"; fi
     exit $ok
 
 # ── cluster ────────────────────────────────────────────────────────────────

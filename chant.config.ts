@@ -124,7 +124,13 @@ export default {
     infisicalProjectSlug: { type: "string", required: false },
     infisicalEnvSlug: { type: "string", default: "prod" },
     infisicalIdentityId: { type: "string", required: false },
-    infisicalHostApi: { type: "string", required: false },
+    infisicalHostApi: {
+      type: "string",
+      default: "http://infisical.infisical.svc.cluster.local:8080",
+    },
+    infisicalSecretsPath: { type: "string", default: "/" },
+    infisicalServiceAccount: { type: "string", default: "fountain-infisical" },
+    infisicalResyncSeconds: { type: "number", default: 60 },
     // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
     emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
     registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
@@ -138,5 +144,18 @@ export default {
     backupRetentionDays: { type: "number", required: false },
     backupBucket: { type: "string", default: "fountain-backups" },
     backupS3Endpoint: { type: "string", required: false },
+
+    // ── cnpg seam ────────────────────────────────────────────────────────
+    cnpgImage: { type: "string", default: "ghcr.io/cloudnative-pg/postgresql:16.4" },
+    // Unset means the cluster's default StorageClass, which is what k3d wants.
+    pgStorageClass: { type: "string", required: false },
+    backupSecretName: { type: "string", default: "fountain-backup-s3-credentials" },
+    // SIX fields, leading with seconds. Separate from backupSchedule, which is
+    // the five-field CronJob form — one parameter for two dialects would put a
+    // valid-looking schedule in the wrong one every time a seam flipped.
+    pitrSchedule: { type: "string", default: "0 47 2 * * *" },
+
+    // ── traefik seam ─────────────────────────────────────────────────────
+    traefikMiddlewareNamespace: { type: "string", required: false },
   },
 } satisfies ChantConfig;

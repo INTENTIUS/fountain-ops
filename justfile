@@ -8,6 +8,28 @@ cluster := "fountain-local"
 ns      := "fountain"
 secret  := "fountain-secrets"
 
+# Build parameters for every target that builds. Empty means the defaults:
+# target=k3d, tier=light, and the seams k3d picks.
+#
+#   just params="--param postgres=cnpg" up
+#
+# It is a variable rather than a recipe argument because `up` is a chain of
+# targets and just does not thread arguments through dependencies — this way
+# `build`, `apply` and `preview` all see the same value.
+params := ""
+
+# Upstream versions, pinned once. `just crds` installs the schemas at these
+# versions and `just operators` installs the controllers that reconcile them,
+# so the two must not be able to drift apart.
+cnpg_version    := "1.29.1"
+# The release branch the operator manifest lives on — the minor of the above.
+cnpg_major      := "1.29"
+barman_version  := "0.14.0"
+traefik_version := "41.1.0"
+infisical_version := "0.11.7"
+prom_version    := "0.79.2"
+certmgr_version := "1.16.2"
+
 default:
     @just --list
 
@@ -130,7 +152,7 @@ secret:
 # ── build and apply ────────────────────────────────────────────────────────
 
 build:
-    npx chant build src -o dist/fountain.yaml --format yaml
+    npx chant build src -o dist/fountain.yaml --format yaml {{params}}
 
 lint:
     npx chant lint src
@@ -445,6 +467,73 @@ dry-run *ARGS:
     npx chant build src -o "$out" --format yaml {{ARGS}}
     kubectl apply --dry-run=server -f "$out"
 
+# Install the controllers that reconcile what `just crds` declares.
+operators:
+    #!/usr/bin/env bash
+    # `just crds` is schemas only: manifests validate, nothing runs. This is the
+    # other half — after it, postgres=cnpg produces a database that actually
+    # accepts connections, and backups=barman-pitr has something archiving into
+    # it.
+    #
+    # Deliberately not part of `just up`, and deliberately not folded into
+    # `just crds`. Installing controllers into a cluster is a much bigger action
+    # than installing schemas, and the two should not become one command by
+    # accident.
+    #
+    # What this installs:
+    #
+    #   cert-manager   because the barman plugin declares an Issuer and a
+    #                  Certificate and will not start without one
+    #   CNPG           the operator, so a Cluster becomes Postgres
+    #   barman plugin  so an ObjectStore and a ScheduledBackup mean something
+    #
+    # and what it does not:
+    #
+    #   traefik        already running on k3d — k3s ships it
+    #   infisical      needs an Infisical server to talk to, which is a separate
+    #                  problem from installing a controller
+    #   prometheus     kube-prometheus-stack is a lot of laptop for a
+    #                  ServiceMonitor
+    #
+    # Teardown is free here only because `just down` deletes the whole cluster.
+    # On a cluster you did not create it is not, which is why this refuses to
+    # run against a context it does not recognise.
+    set -euo pipefail
+
+    ctx="$(kubectl config current-context 2>/dev/null || true)"
+    if [ "$ctx" != "k3d-{{cluster}}" ] && [ "${ALLOW_FOREIGN_CLUSTER:-}" != "1" ]; then
+      echo "  ✗ current context is \"$ctx\", not \"k3d-{{cluster}}\"." >&2
+      echo "" >&2
+      echo "    This installs cluster-scoped controllers and CRDs. On a throwaway" >&2
+      echo "    k3d cluster that is free to undo — \`just down\` deletes the lot." >&2
+      echo "    On a cluster you did not create it is not, and uninstalling an" >&2
+      echo "    operator from under running workloads is its own problem." >&2
+      echo "" >&2
+      echo "    If you meant it: ALLOW_FOREIGN_CLUSTER=1 just operators" >&2
+      exit 2
+    fi
+
+    apply() { kubectl apply --server-side --force-conflicts -f "$1" >/dev/null; }
+    ready() { kubectl -n "$1" wait --for=condition=Available deploy --all --timeout="${2:-300s}" >/dev/null; }
+
+    echo "cert-manager v{{certmgr_version}}..."
+    apply "https://github.com/cert-manager/cert-manager/releases/download/v{{certmgr_version}}/cert-manager.yaml"
+    ready cert-manager
+    echo "  ✓ cert-manager"
+
+    echo "CloudNativePG v{{cnpg_version}}..."
+    apply "https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-{{cnpg_major}}/releases/cnpg-{{cnpg_version}}.yaml"
+    ready cnpg-system
+    echo "  ✓ cnpg"
+
+    echo "barman-cloud plugin v{{barman_version}}..."
+    apply "https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v{{barman_version}}/manifest.yaml"
+    ready cnpg-system
+    echo "  ✓ barman-cloud"
+
+    echo ""
+    echo "  operators are up. Now: just up postgres=cnpg  (or --param postgres=cnpg)"
+
 # Install the CRDs the operator seams declare against, without the operators.
 crds:
     #!/usr/bin/env bash
@@ -453,15 +542,15 @@ crds:
     # and not one this repo makes for you.
     set -euo pipefail
     apply() { kubectl apply --server-side --force-conflicts -f "$1" >/dev/null && echo "  ✓ $2"; }
-    cnpg=https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/config/crd/bases
+    cnpg=https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v{{cnpg_version}}/config/crd/bases
     apply "$cnpg/postgresql.cnpg.io_clusters.yaml"         "cnpg Cluster"
     apply "$cnpg/postgresql.cnpg.io_scheduledbackups.yaml"  "cnpg ScheduledBackup"
-    apply "https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/v0.14.0/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml" "barman ObjectStore"
-    traefik=https://raw.githubusercontent.com/traefik/traefik-helm-chart/v41.1.0/traefik/crds
+    apply "https://raw.githubusercontent.com/cloudnative-pg/plugin-barman-cloud/v{{barman_version}}/config/crd/bases/barmancloud.cnpg.io_objectstores.yaml" "barman ObjectStore"
+    traefik=https://raw.githubusercontent.com/traefik/traefik-helm-chart/v{{traefik_version}}/traefik/crds
     apply "$traefik/traefik.io_ingressroutes.yaml" "traefik IngressRoute"
     apply "$traefik/traefik.io_middlewares.yaml"   "traefik Middleware"
-    apply "https://raw.githubusercontent.com/Infisical/kubernetes-operator/infisical-k8-operator/v0.11.7/config/crd/bases/secrets.infisical.com_infisicalsecrets.yaml" "InfisicalSecret"
-    prom=https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd
+    apply "https://raw.githubusercontent.com/Infisical/kubernetes-operator/infisical-k8-operator/v{{infisical_version}}/config/crd/bases/secrets.infisical.com_infisicalsecrets.yaml" "InfisicalSecret"
+    prom=https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v{{prom_version}}/example/prometheus-operator-crd
     apply "$prom/monitoring.coreos.com_servicemonitors.yaml" "ServiceMonitor"
     apply "$prom/monitoring.coreos.com_prometheusrules.yaml" "PrometheusRule"
-    apply "https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.crds.yaml" "cert-manager"
+    apply "https://github.com/cert-manager/cert-manager/releases/download/v{{certmgr_version}}/cert-manager.crds.yaml" "cert-manager"

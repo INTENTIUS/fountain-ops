@@ -16,6 +16,8 @@ Stood up and exercised, not reasoned about.
 | Bundled Postgres | 23 tables, app connects |
 | Registering and signing in | Registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated — the fountain skill and a `/home/sprite/.env` written into its filesystem |
+| `postgres=cnpg` | **The operator reconciles a real database.** `just operators`, then `postgres=cnpg`: CNPG reports `Cluster in healthy state`, fountain migrates 23 tables into it, and `/health/ready` answers `{"database":"ok"}` |
+| `k3d` + `tier=ha` | **Stands up.** Two app replicas that form an Erlang cluster (libcluster logs the connect, and there are no failures between the live pods), backed by a CNPG cluster at 2/2 ready. Serves `/health/ready` |
 
 ## Does not work
 
@@ -30,10 +32,11 @@ Stood up and exercised, not reasoned about.
 |---|---|
 | `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
 | `target=kubernetes` | Never applied to a real cluster. `postgres=reference` has never connected to anything — [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
-| `tier=standard`, `tier=ha` | The clustering wiring is emitted and unexercised. `standard` currently emits the same deployment as `light` — [#21](https://github.com/INTENTIUS/fountain-ops/issues/21) |
-| `tls=cert-manager` | Builds only |
+| `tier=standard` | Emits the same deployment as `light` — [#21](https://github.com/INTENTIUS/fountain-ops/issues/21) |
 | `monitoring=prometheus-operator` | Builds only. Emitted nothing at all until the `tier.metrics` fix |
-| `postgres=cnpg`, `backups=barman-pitr`, `ingress=traefik`, `secrets=infisical` | Build, and a real API server accepts the output (`just crds` then `just dry-run`). **No controller has reconciled any of it** — [#22](https://github.com/INTENTIUS/fountain-ops/issues/22) |
+| `backups=barman-pitr` | The `ObjectStore` and `ScheduledBackup` apply and the barman plugin is running after `just operators`, but **no backup has been taken or restored through it** |
+| `tls=cert-manager` (issuance) | cert-manager installs and is Available, but no certificate has been issued — a local cluster has no domain to issue against |
+| `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` | Build, and a real API server accepts the output. No controller has reconciled any of them: Traefik ships with k3s but nothing routes through it here, Infisical needs a server to talk to, and kube-prometheus-stack is not installed — [#22](https://github.com/INTENTIUS/fountain-ops/issues/22) |
 | `ops/` | Empty. No Ops exist yet |
 
 ## Why the table reads like this

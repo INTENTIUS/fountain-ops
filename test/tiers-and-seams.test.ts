@@ -229,3 +229,29 @@ describe("the CNPG backup schedule", () => {
     expect(() => assertSixFieldSchedule("47 2 * * *")).toThrow(/"0 47 2 \* \* \*"/);
   });
 });
+
+describe("host and hostname", () => {
+  // `host` carries a port because PUBLIC_URL needs one. Everything else that
+  // reads it wants a hostname: PHX_HOST is Phoenix's url: [host: ...], an
+  // Ingress rule's host, a Certificate's dnsNames, and Traefik's Host()
+  // matcher. A port in any of those is wrong, and Phoenix logged it on every
+  // boot for as long as they shared one value (#32).
+  const hostnameOf = (h: string) => h.split(":")[0];
+
+  test("a port is stripped for the hostname uses", () => {
+    expect(hostnameOf("localhost:4000")).toBe("localhost");
+    expect(hostnameOf("fountain.example.com:8443")).toBe("fountain.example.com");
+  });
+
+  test("a host with no port is unchanged", () => {
+    expect(hostnameOf("fountain.example.com")).toBe("fountain.example.com");
+  });
+
+  test("no hostname ever contains a colon", () => {
+    // The property, rather than the three cases above: whatever `host` is, the
+    // value handed to PHX_HOST and the Ingress must not carry an authority.
+    for (const h of ["localhost:4000", "fountain.example.com", "a.b.c:1", "x:65535"]) {
+      expect(hostnameOf(h)).not.toContain(":");
+    }
+  });
+});

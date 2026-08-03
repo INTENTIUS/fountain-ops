@@ -66,10 +66,14 @@ just pg-logs      # the database
 not mint a second secret over the first — which matters more than it looks, and
 is covered in [Secrets](/fountain-ops/reference/secrets/).
 
-:::caution[A honeycomb 401 every five seconds]
-`just logs` on a default deployment is dominated by
-`!missing 'x-honeycomb-team' header`, twelve lines a minute, saying `error` and
-`401`. That is fountain's OTLP exporter reaching for a collector you have not
-configured. It is noise, not your problem, and it is
-[#35](https://github.com/INTENTIUS/fountain-ops/issues/35).
+:::note[Tracing is off unless you ask for it]
+fountain's runtime config hardcodes an OTLP exporter aimed at `api.honeycomb.io`,
+so an instance that has never heard of Honeycomb retries a 401 against it every
+five seconds forever — twelve lines a minute in `just logs`, saying `error` and
+`401`, on top of the signal you came to read.
+
+`OTEL_TRACES_EXPORTER` is set to `none` by default, which stops it. To export
+traces somewhere real, build with `--param otelTraces=otlp` and supply the
+standard `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS`
+yourself — this repo does not model them.
 :::

@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, host, httpsPublicUrl, tier, seams, secretName, labels } from "../params";
+import { namespace, image, publicUrl, host, httpsPublicUrl, tier, seams, secretName, emailDelivery, registrationEnabled, labels } from "../params";
 
 /**
  * The fountain server.
@@ -45,9 +45,10 @@ const clusteringPorts = tier.clustered
     ]
   : [];
 
-// With postgres="cnpg" the operator generates a Secret carrying a ready-made
-// connection URI. With "reference" the URL is one more key in the Secret you
-// created — a connection string with a password in it is not config.
+// cnpg: the operator generates a Secret carrying a ready-made connection URI.
+// bundled and reference: the URL is one more key in the Secret, because a
+// connection string with a password in it is not config. For bundled, whatever
+// writes the Secret also points it at the in-cluster service.
 const databaseUrl =
   seams.postgres === "cnpg"
     ? { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: "fountain-pg-app", key: "uri" } } }
@@ -66,12 +67,27 @@ export const deployment = new Deployment({
           new Container({
             name: "fountain",
             image,
+            imagePullPolicy: "IfNotPresent",
             ports: [{ containerPort: 4000, name: "http" }, { containerPort: 9568, name: "metrics" }, ...clusteringPorts],
             env: [
               { name: "PHX_SERVER", value: "true" },
               { name: "PORT", value: "4000" },
               { name: "PUBLIC_URL", value: publicUrl },
               { name: "PHX_HOST", value: host },
+              // fountain refuses to boot without a mail decision. Discarding
+              // verification mail silently would dead-end signup with no
+              // visible error, so it makes you say so — "none" is a real
+              // answer, absent is not.
+              { name: "EMAIL_DELIVERY", value: emailDelivery },
+              // The subscription gate is a lock with no key on a self-hosted
+              // instance unless Stripe is configured.
+              { name: "BILLING_ENABLED", value: "false" },
+              // An instance on the public internet with registration open will
+              // be found. Close it once you have your account.
+              { name: "REGISTRATION_ENABLED", value: registrationEnabled },
+              // The bundled Postgres serves no TLS, so requiring it is a boot
+              // failure. Anything else is assumed to.
+              { name: "DATABASE_SSL", value: seams.postgres === "bundled" ? "false" : "true" },
               databaseUrl,
               ...clusteringEnv,
             ],

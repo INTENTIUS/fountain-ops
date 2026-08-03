@@ -1,20 +1,18 @@
 /**
  * The one place build-time parameters are read.
  *
- * Nothing in this project reads `process.env` — an ambient read depends on
- * whatever process happens to be running the build, which is exactly what
- * chant's fold engine cannot reduce to a value. Everything here is declared in
+ * Nothing in this project reads `process.env`. Everything here is declared in
  * ../chant.config.ts's `buildParams` and supplied with `--param` /
  * `--params-file`, or the env mapping the declaration opts into.
  *
- * The `?? default` on each line mirrors the declared default. Redundant under
- * a real `chant build`, and a real safety net for anything importing this
- * outside the build pipeline (a unit test, a script) where `params` is still
- * its initial empty object.
+ * The `?? default` on each line mirrors the declared default — redundant under
+ * a real `chant build`, and a safety net for anything importing this outside
+ * the build pipeline (a unit test, a script) where `params` is still empty.
  */
 
 import { params } from "@intentius/chant/params";
 import { resolveTier, type Tier } from "./lib/tiers";
+import { targetShape, type Target } from "./lib/targets";
 import { resolveSeams, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
@@ -25,44 +23,51 @@ export const image = (params.image as string | undefined) ?? "ghcr.io/binarybour
 export const host = (params.host as string | undefined) ?? "localhost:4000";
 export const scheme = (params.scheme as string | undefined) ?? "http";
 
-/** Derived, not declared — see chant.config.ts for why this direction. */
+/** Derived, not declared — splitting a URL apart in source is a call nothing folds. */
 export const publicUrl = `${scheme}://${host}`;
 
 /** https is what turns on fountain's redirect, HSTS and secure cookies. */
 export const httpsPublicUrl = scheme === "https";
 
-export const tier = resolveTier(
-  (params.tier as Tier | undefined) ?? "light",
-  params.replicas as number | undefined,
-);
+// ── the two axes ───────────────────────────────────────────────────────────
+// target = where the substrate runs. tier = how durable it is. Independent:
+// any tier runs on any target.
+export const targetName = (params.target as Target | undefined) ?? "k3d";
+export const target = targetShape(targetName);
+export const tierName = (params.tier as Tier | undefined) ?? "light";
+export const tier = resolveTier(tierName, params.replicas as number | undefined);
 
 /**
- * Seams start from the tier's profile; anything passed explicitly replaces
- * exactly that one and leaves the rest of the profile intact.
+ * Seams start from the target's defaults — what is coherent on that substrate —
+ * and an explicit choice replaces exactly one, leaving the rest alone.
  */
-export const seams: Seams = resolveSeams(tier.seams, {
-  postgres: params.postgres as Seams["postgres"] | undefined,
-  secrets: params.secrets as Seams["secrets"] | undefined,
-  ingress: params.ingress as Seams["ingress"] | undefined,
-  tls: params.tls as Seams["tls"] | undefined,
-  backups: params.backups as Seams["backups"] | undefined,
-  monitoring: params.monitoring as Seams["monitoring"] | undefined,
-});
+export const seams: Seams = resolveSeams(
+  target.seams,
+  {
+    postgres: params.postgres as Seams["postgres"] | undefined,
+    secrets: params.secrets as Seams["secrets"] | undefined,
+    ingress: params.ingress as Seams["ingress"] | undefined,
+    tls: params.tls as Seams["tls"] | undefined,
+    backups: params.backups as Seams["backups"] | undefined,
+    monitoring: params.monitoring as Seams["monitoring"] | undefined,
+  },
+  tier.clustered,
+);
 
 // ── seam inputs ────────────────────────────────────────────────────────────
 export const secretName = (params.secretName as string | undefined) ?? "fountain-secrets";
+/** "none" is a deliberate answer, not a missing one — fountain will not boot without it. */
+export const emailDelivery = (params.emailDelivery as string | undefined) ?? "none";
+export const registrationEnabled = (params.registrationEnabled as string | undefined) ?? "true";
 export const clusterIssuer = (params.clusterIssuer as string | undefined) ?? "letsencrypt-production";
 export const ingressClassName = params.ingressClassName as string | undefined;
-export const pgStorageClass = params.pgStorageClass as string | undefined;
 export const pgStorageSize = (params.pgStorageSize as string | undefined) ?? "10Gi";
+export const pgImage = (params.pgImage as string | undefined) ?? "postgres:16";
 export const backupSchedule = (params.backupSchedule as string | undefined) ?? "17 3 * * *";
-export const backupRetentionDays = (params.backupRetentionDays as number | undefined) ?? 14;
-export const backupBucket = params.backupBucket as string | undefined;
-// The local tier points at floci by default — floci speaks S3, so the backup
-// path runs for real against an emulated bucket instead of being the part
-// nobody exercises until a restore.
-export const backupS3Endpoint =
-  (params.backupS3Endpoint as string | undefined) ?? (tier.emulated ? "http://localhost:4566" : undefined);
+/** Retention comes from the tier — it is durability, not a seam input. */
+export const backupRetentionDays = (params.backupRetentionDays as number | undefined) ?? tier.retentionDays;
+export const backupBucket = (params.backupBucket as string | undefined) ?? "fountain-backups";
+export const backupS3Endpoint = (params.backupS3Endpoint as string | undefined) ?? target.s3Endpoint;
 
 /** Labels every resource carries, so a human and `--owned` agree on what this is. */
 export const labels = {
@@ -77,3 +82,10 @@ export const labels = {
  * is a local const — spreading an imported binding is EVL004.
  */
 export const serviceLabels = { ...labels, monitoring: "fountain-web" };
+
+/** The bundled Postgres gets its own identity so selectors do not collide. */
+export const pgLabels = {
+  "app.kubernetes.io/name": "fountain",
+  "app.kubernetes.io/instance": env,
+  "app.kubernetes.io/component": "postgres",
+};

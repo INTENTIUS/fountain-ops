@@ -1,95 +1,132 @@
 # fountain-ops
 
-Self-hosted [fountain](https://github.com/BinaryBourbon/fountain), deployed by [chant](https://github.com/INTENTIUS/chant).
+Self-hosted [fountain](https://github.com/BinaryBourbon/fountain), deployed by [chant](https://intentius.io/chant).
 
-Two axes decide what this emits:
+You drive this by its `just` targets. You do not need to know chant to use it.
 
-- **tier** — how much fountain you are running
-- **seams** — who provides each dependency
+## Getting started
 
-Nothing here is a template you fill in. `chant build` emits the manifests, `chant lint` gates them, and the same source targets a laptop k3d cluster or a real one by changing parameters.
+Everything below has been run end to end on a laptop. It takes about five minutes, most of it pulling images.
 
-## Quick start
+**You need:** Docker running, plus `k3d`, `kubectl`, `node` and `just`. Check with:
+
+```bash
+just doctor
+```
+
+**Stand it up:**
 
 ```bash
 npm install
-
-# what a laptop gets: one replica, your own Postgres, plain Ingress
-chant build src -o dist/fountain.yaml --format yaml
-kubectl apply -f dist/fountain.yaml
+just up
 ```
 
-The Secret is **not** declared here and never will be. Create it out of band:
+That creates a k3d cluster, mints the platform secret, builds the manifests, applies them, waits for both rollouts, and proves the app serves. The last line tells you it worked:
+
+```
+GET /health via an in-cluster probe...
+{"status":"ok"}
+  ✓ /health answered
+```
+
+**Look at it:**
 
 ```bash
-kubectl create secret generic fountain-secrets -n fountain \
-  --from-literal=SECRET_KEY_BASE="$(openssl rand -base64 48 | tr -d '\n')" \
-  --from-literal=MASTER_SECRETS_KEY="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')" \
-  --from-literal=DATABASE_URL="postgres://user:pass@your-postgres:5432/fountain" \
-  --from-literal=SPRITES_TOKEN="your-sprites-token"
+just forward      # http://localhost:4000
 ```
 
-`MASTER_SECRETS_KEY` encrypts every stored secret. Lose it and they are unrecoverable, so back it up somewhere that is not this cluster. A database backup alone cannot decrypt itself.
+**Tear it down:**
 
-## Tiers
+```bash
+just down
+```
 
-| Tier | Replicas | What you get |
-|---|---|---|
-| `light` | 1 | Bring your own Postgres. No backups, no metrics. |
-| `production` | 1 | Backups, metrics, TLS. |
-| `production-ha` | 2+ | Erlang clustering, WAL archiving. |
+### If something goes wrong
 
-The replica count is not a free knob. Above one replica fountain's pods must form a real Erlang cluster — headless Service, `RELEASE_NODE`, a pinned distribution port — or they run as isolated islands and conversation streaming breaks for whichever pod did not spawn the conversation. It fails quietly, under load, for some users. So the tier carries the wiring, and `--param tier=light --param replicas=2` is a build error rather than a broken cluster.
+The steps of `just up` are separate targets, because when a deploy fails you want the step, not the whole thing again.
+
+```bash
+just status       # everything in the namespace
+just logs         # the app, following
+just pg-logs      # the database
+```
+
+`just up` is safe to re-run. It will not create a second cluster, and it will not mint a second secret over the first.
+
+## What you get
+
+One `light` deployment on k3d: the fountain server, a single-instance Postgres, and a nightly backup job. No ingress and no TLS — you reach it with `just forward`.
+
+Verified working: the app boots, runs its migrations, and answers `/health/ready` with `{"status":"ok","checks":{"database":"ok"}}`.
+
+Conversations will not run without a real `SPRITES_TOKEN` — `just secret` writes a placeholder so the app boots. Everything else works.
+
+## The two axes
+
+**Target** — where the substrate runs. **Tier** — how durable it is. They are independent: any tier runs on any target.
+
+```bash
+just preview kubernetes standard    # see it without applying anything
+```
+
+A tier scales the deployment; it never changes what fountain can do. `light` is not a cut-down fountain, it is a smaller one.
+
+The one thing that is not a free knob is the replica count. Above one replica fountain's pods must form an Erlang cluster, or conversation streaming breaks for whichever pod did not spawn the conversation — quietly, under load, for some users. So `tier=ha` carries that wiring, and asking for two replicas at `light` is a build error rather than a broken deployment.
 
 ## Seams
 
-Every seam has a mode that works with the k8s lexicon as it ships today.
+Each dependency has a mode. The target picks defaults that are coherent on that substrate; setting one explicitly replaces exactly that seam.
 
-| Seam | Modes | Default |
-|---|---|---|
-| `postgres` | `reference` · `cnpg`* | `reference` |
-| `secrets` | `reference` · `infisical`* | `reference` |
-| `ingress` | `omit` · `ingress` · `traefik`* | `ingress` |
-| `tls` | `omit` · `cert-manager` | `omit` |
-| `backups` | `omit` · `pg-dump` · `barman-pitr`* | `omit` |
-| `monitoring` | `omit` · `prometheus-operator` | `omit` |
+| Seam | Modes |
+|---|---|
+| `postgres` | `bundled` · `reference` · `cnpg`\* |
+| `secrets` | `reference` · `infisical`\* |
+| `ingress` | `omit` · `ingress` · `traefik`\* |
+| `tls` | `omit` · `cert-manager` |
+| `backups` | `omit` · `pg-dump` · `barman-pitr`\* |
+| `monitoring` | `omit` · `prometheus-operator` |
 
-\* needs a CRD chant does not generate yet. Asking for one is a build error naming the issue that lands it — [#1319](https://github.com/INTENTIUS/chant/issues/1319) CNPG, [#1320](https://github.com/INTENTIUS/chant/issues/1320) Traefik, [#1321](https://github.com/INTENTIUS/chant/issues/1321) Infisical.
+\* needs a CRD chant does not generate yet. Asking for one is a build error naming the issue that lands it.
 
-Refusing beats emitting. An IngressRoute assembled by hand as an untyped blob would build green and fail at the cluster, which is the failure mode chant exists to remove.
+## Status
 
-```bash
-# a real deployment, once the operators are installed
-chant build src --format yaml \
-  --param tier=production \
-  --param host=fountain.example.com \
-  --param scheme=https \
-  --param tls=cert-manager \
-  --param monitoring=prometheus-operator
-```
+**This section is authoritative.** Anywhere else that something is described in the present tense, what is true is what this says.
 
-## Why host and scheme, not a URL
+| | State |
+|---|---|
+| `target=k3d`, `tier=light` | **Verified** — stood up, serves `/health/ready`, migrations ran |
+| Bundled Postgres | **Verified** — 23 tables, app connects |
+| `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
+| `target=kubernetes` | **Builds only.** Never applied to a real cluster |
+| `tier=standard`, `tier=ha` | **Builds only.** The clustering wiring is emitted and unexercised |
+| `tls=cert-manager` | **Builds only** |
+| `monitoring=prometheus-operator` | **Builds only** |
+| `postgres=cnpg`, `ingress=traefik`, `secrets=infisical` | **Refused at build.** Blocked on chant CRD work |
+| `ops/` | **Empty.** No Ops exist yet |
 
-`PUBLIC_URL` is derived from `host` + `scheme`, not declared whole. The host on its own is what the ingress rule and the certificate SAN need, and splitting a URL back apart in source is a function call, which nothing can fold.
+A backup nobody has restored is a hypothesis, so the backup row says what it says.
 
-`scheme=https` is not cosmetic: it turns on fountain's HTTPS redirect, HSTS and secure cookies, so whatever terminates TLS **must** set `X-Forwarded-Proto` or every request looks like http and redirect-loops.
+## Secrets
 
-## Probes
+`just secret` generates the platform secret and never rotates an existing one. That matters more than it looks: `MASTER_SECRETS_KEY` regenerated over an existing database makes every stored secret unrecoverable, and it looks exactly like a successful deploy.
 
-Read the comment in `src/app/deployment.ts` before changing them. Liveness deliberately checks only the process — pointing it at the database restarts every pod at once during a Postgres blip, which does nothing to fix Postgres.
+No secret value is in this repo, and none ever will be. The interim generation in `just secret` is standing in for a real chant capability — [INTENTIUS/chant#1365](https://github.com/INTENTIUS/chant/issues/1365).
 
 ## Layout
 
 ```
-chant.config.ts        lexicons, params, ownership, lint
+chant.config.ts    lexicons, params, ownership, lint
+justfile           every target you need
 src/
-  params.ts            the one place build params are read
-  lib/tiers.ts         tier -> shape, and the replica refusal
-  lib/seams.ts         seam validation and the CRD refusals
-  app/                 Deployment, Service, Namespace, headless Service
-  ingress/             Ingress, Certificate
-  observability/       ServiceMonitor, PrometheusRule
-ops/                   deploy / watch / reconcile
+  params.ts        the one place build params are read
+  lib/targets.ts   target -> seam defaults
+  lib/tiers.ts     tier -> durability, and the replica refusal
+  lib/seams.ts     seam validation and the CRD refusals
+  app/             Deployment, Service, Namespace, headless Service
+  data/            the bundled Postgres
+  ingress/         Ingress, Certificate
+  backup/          the pg_dump CronJob
+  observability/   ServiceMonitor, PrometheusRule
 ```
 
-Nothing reads `process.env`. Every input is a declared build parameter, so the same source produces the same manifests given the same parameters.
+Nothing reads `process.env`. Every input is a declared build parameter, so the same parameters produce the same manifests.

@@ -1,5 +1,6 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
 import { namespace, image, publicUrl, host, httpsPublicUrl, tier, seams, secretName, emailDelivery, registrationEnabled, labels } from "../params";
+import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
  * The fountain server.
@@ -37,6 +38,11 @@ const clusteringEnv = tier.clustered
       { name: "CLUSTER_DNS_QUERY", value: `fountain-headless.${namespace}.svc.cluster.local` },
     ]
   : [];
+
+// Only set when the emulator is the data plane. Left unset the Sprites client
+// falls back to its own default, so absent means "the real API" without this
+// file having to name it.
+const spritzerEnv = spritzerBaseUrl ? [{ name: "SPRITES_BASE_URL", value: spritzerBaseUrl }] : [];
 
 const clusteringPorts = tier.clustered
   ? [
@@ -90,6 +96,11 @@ export const deployment = new Deployment({
               { name: "DATABASE_SSL", value: seams.postgres === "bundled" ? "false" : "true" },
               databaseUrl,
               ...clusteringEnv,
+              // The whole data plane seam, on the app's side. Unset, the client
+              // defaults to https://api.sprites.dev; set, it talks to the
+              // emulator in this namespace. Nothing else about the app changes,
+              // which is what makes the local path exercise the real one.
+              ...spritzerEnv,
             ],
             // Everything secret-shaped comes from the Secret, whoever made it.
             envFrom: [{ secretRef: { name: secretName } }],

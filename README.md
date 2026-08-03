@@ -107,10 +107,29 @@ Each dependency has a mode. The target picks defaults that are coherent on that 
 | `tls` | `omit` · `cert-manager` |
 | `backups` | `omit` · `pg-dump` · `barman-pitr` |
 | `monitoring` | `omit` · `prometheus-operator` |
+| `dataPlane` | `sprites` · `spritzer` |
 
-Every mode is expressible. What is still refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates.
+Every mode is expressible. What is still refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates, an in-memory emulator behind the word "ha".
 
 The operator modes need their operator already installed. chant declares custom resources; it does not install controllers.
+
+## The data plane, and what a local conversation proves
+
+fountain reaches the sandboxes its agents run in through one credential and one base URL. `dataPlane=spritzer` points that URL at an emulator running in the cluster, so the seam is configuration and nothing else — the app is not built differently and cannot tell. That is what makes a local run exercise the real control-plane path instead of a stub of it.
+
+It works further than you might expect. Creating a conversation provisions a sprite, writes the `fountain` skill and a `/home/sprite/.env` into its filesystem, runs a turn, and streams `provision` → `turn` → `output` → done with `exit_code: 0`.
+
+**And the output is an echo.** spritzer answers exec with a small scripted interpreter — `echo`, `cat`, `rm`, and an echo-back default — so the turn returns the runtime's own command line rather than anything a model said:
+
+```
+claude --dangerously-skip-permissions --print --verbose --output-format stream-json --session-id ...
+```
+
+Three things are absent and no configuration brings them back: **live model reasoning**, **real tool execution** in the sandbox, and **true VM isolation**. So a green local conversation is a plumbing check — it says fountain can provision a sandbox, address it, and stream from it. It says nothing about how an agent behaves, and it is not somewhere to judge sandbox security. Single-node Postgres is likewise not somewhere to benchmark durability.
+
+The consequence worth stating: a deploy gate that only asserts "a conversation streamed" passes against spritzer while proving nothing about the model ([#4](https://github.com/INTENTIUS/fountain-ops/issues/4)).
+
+For real conversations set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret. That token is a **platform** credential, never a tenant one — it must not reach tenant-visible config, agent Environments or Vaults, or logs.
 
 ## Status
 
@@ -121,7 +140,7 @@ The operator modes need their operator already installed. chant declares custom 
 | `target=k3d`, `tier=light` | **Verified** — stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | **Verified** — 23 tables, app connects |
 | Registering and signing in | **Verified** — registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
-| Holding a conversation | **Not possible.** `SPRITES_TOKEN` is a placeholder, so there is no data plane — [#15](https://github.com/INTENTIUS/fountain-ops/issues/15) |
+| Holding a conversation | **Streams, against an emulated data plane.** A sprite is provisioned and populated, a turn runs, output streams, the turn exits 0. The output is spritzer's echo, not a model — see below |
 | Admin | **Not possible.** `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 | `pg-dump` backup job | **Emitted, never run.** The CronJob applies; no backup has been taken or restored |
 | `target=kubernetes` | **Builds only.** Never applied to a real cluster |

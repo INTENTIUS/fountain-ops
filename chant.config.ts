@@ -9,9 +9,14 @@ import type { ChantConfig } from "@intentius/chant";
  *   tier   — how durable it is (light / standard / ha)
  *   seams  — who provides each dependency (postgres, secrets, ingress, tls, backups, metrics)
  *
- * target and tier are independent: any tier runs on any target. The target
- * picks coherent seam defaults; the tier scales the deployment and never
- * changes what fountain can do.
+ * They are separate questions: a tier does not imply a target, or the reverse.
+ * The target picks coherent seam defaults; the tier scales the deployment and
+ * never changes what fountain can do.
+ *
+ * Separate is not the same as freely combinable. A tier is refused on a target
+ * whose default seams cannot support it -- k3d defaults to the bundled
+ * single-instance Postgres, so k3d + ha is a build error until postgres is set
+ * explicitly. Six combinations, five of which build.
  *
  * Every seam mode is expressible against the k8s lexicon as it ships. What is
  * rejected at build time is an incoherent combination -- a "highly available"
@@ -32,6 +37,18 @@ export default {
   // One environment per invocation — the same single-deployment-at-a-time
   // convention the params below follow.
   environments: [env],
+
+  // Every resource module here reads a value that comes out of a function --
+  // resolveTier, targetShape, resolveSeams -- so the static folder can never
+  // fold any of them and falls back to running each one. That fallback is the
+  // correct outcome and it is also the design: the refusals in lib/ are
+  // executable checks, not literals.
+  //
+  // Left on, chant reports the fallback once per file, thirteen times, in a
+  // nested "is not foldable" format that reads like an error to anyone seeing
+  // it for the first time. Declaring the intent removes all thirteen and the
+  // built output is byte-identical.
+  build: { fold: false },
 
   // Labels every emitted resource with app.kubernetes.io/managed-by=chant plus
   // the stack and env identity, so `--owned` filtering, drift and the
@@ -57,6 +74,14 @@ export default {
       // database gets slower instead of shedding load, and a stalled dump is a
       // missing backup. Requests are set; limits are deliberate omissions.
       WK8201: "off",
+      // "consider at least 2 replicas for high availability" asks for the one
+      // thing this repo refuses to let you do. The replica count comes from
+      // the tier, and above one replica fountain's pods must form an Erlang
+      // cluster — so resolveTier makes two replicas at light or standard a
+      // build error, and the bundled Postgres is a single instance by
+      // definition. At tier=ha the count is already 2 and the rule is silent.
+      // A warning nobody can act on trains people to ignore warnings.
+      WK8302: "off",
     },
   },
 
@@ -77,7 +102,8 @@ export default {
     image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.3.0" },
 
     // ── the two axes ──────────────────────────────────────────────────────
-    // They are independent: any tier runs on any target.
+    // Separate questions, and not a free grid: k3d + ha is refused, because
+    // k3d's default bundled Postgres cannot back it. See src/lib/targets.ts.
     //
     // target — where the substrate runs. Picks coherent seam defaults for that
     //          substrate and nothing else.

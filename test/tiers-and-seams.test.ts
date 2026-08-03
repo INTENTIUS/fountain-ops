@@ -126,6 +126,50 @@ describe("seams", () => {
   });
 });
 
+describe("the target x tier matrix", () => {
+  // #20 tested the claim "any tier runs on any target", found it false, and
+  // fixed the README. The same sentence survived in four places in the source
+  // (#28) because nothing enforced it. This is the enforcement: the docs now
+  // name a specific number, so the number is a test.
+  const targets = ["k3d", "kubernetes"] as const;
+  const tiers = ["light", "standard", "ha"] as const;
+
+  const build = (target: (typeof targets)[number], tier: (typeof tiers)[number]) => {
+    const shape = tierShape(tier);
+    return resolveSeams(targetShape(target).seams, {}, shape.clustered);
+  };
+
+  test("five of the six combinations resolve on their default seams", () => {
+    const ok = targets.flatMap((t) =>
+      tiers.map((tier) => {
+        try {
+          build(t, tier);
+          return `${t}/${tier}`;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    expect(ok.filter(Boolean)).toEqual([
+      "k3d/light",
+      "k3d/standard",
+      "kubernetes/light",
+      "kubernetes/standard",
+      "kubernetes/ha",
+    ]);
+  });
+
+  test("k3d + ha is the one refused, and names the seam that fixes it", () => {
+    // Not because the axes are coupled — because k3d defaults to the bundled
+    // single-instance Postgres. Naming the seam builds it, which is what makes
+    // this a refusal rather than an unsupported combination.
+    expect(() => build("k3d", "ha")).toThrow(/postgres="cnpg"/);
+    expect(() =>
+      resolveSeams(targetShape("k3d").seams, { postgres: "cnpg" }, true),
+    ).not.toThrow();
+  });
+});
+
 describe("the CNPG backup schedule", () => {
   test("accepts the six-field form", () => {
     expect(() => assertSixFieldSchedule("0 47 2 * * *")).not.toThrow();

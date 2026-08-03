@@ -57,6 +57,13 @@ export const backup =
                     {
                       name: "dump",
                       image: "postgres:16",
+                      // Both of these are set on the app and the bundled
+                      // Postgres already; this container was the one that
+                      // missed them. pg_dump reads over a connection string
+                      // and writes to an emptyDir, so it needs no capability
+                      // at all.
+                      imagePullPolicy: "IfNotPresent",
+                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false },
                       command: ["/bin/bash", "-c"],
                       args: [
                         `set -euo pipefail

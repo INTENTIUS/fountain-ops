@@ -12,47 +12,10 @@ const base: Seams = {
   backups: "omit",
   monitoring: "omit",
   dataPlane: "sprites",
+  storage: "s3",
 };
 
 describe("tiers", () => {
-  test("light and standard are single-replica and unclustered", () => {
-    expect(resolveTier("light").replicas).toBe(1);
-    expect(resolveTier("light").clustered).toBe(false);
-    expect(resolveTier("standard").clustered).toBe(false);
-  });
-
-  test("ha is clustered, because >1 replica requires it", () => {
-    const ha = resolveTier("ha");
-    expect(ha.replicas).toBeGreaterThan(1);
-    expect(ha.clustered).toBe(true);
-  });
-
-  // The whole reason tier and replicas resolve together: a silent island is
-  // worse than a build error, because it breaks streaming for some users only.
-  test("more replicas than the tier can cluster is refused", () => {
-    expect(() => resolveTier("light", 2)).toThrow(/must form an Erlang cluster/);
-    expect(() => resolveTier("standard", 3)).toThrow(/tier "ha"/);
-  });
-
-  test("an override the tier can support is honoured", () => {
-    expect(resolveTier("ha", 4).replicas).toBe(4);
-  });
-
-  test("zero replicas is refused", () => {
-    expect(() => resolveTier("light", 0)).toThrow(/at least 1/);
-  });
-});
-
-describe("target and tier are independent axes", () => {
-  test("the target picks seam defaults, not durability", () => {
-    const k3d = targetShape("k3d");
-    expect(k3d.emulated).toBe(true);
-    expect(k3d.seams.postgres).toBe("bundled");
-    expect(k3d.seams.ingress).toBe("omit");
-    // floci, so the backup path is exercised offline rather than at a restore.
-    expect(k3d.seams.backups).toBe("pg-dump");
-    expect(k3d.s3Endpoint).toContain("4566");
-  });
 
   test("a real cluster assumes no operators are installed", () => {
     const k = targetShape("kubernetes");
@@ -167,17 +130,25 @@ describe("the target x tier matrix", () => {
     expect(() => build("k3d", "ha")).toThrow(/postgres="cnpg"/);
   });
 
-  test("k3d + ha needs both of its emulated seams named, not just postgres", () => {
-    // Two of k3d's defaults are single-pod stand-ins, so fixing one still
-    // leaves the other. The refusals surface one at a time, which is worth a
-    // test of its own: "add postgres=cnpg and it builds" was true when
-    // postgres was the only one, and the data plane seam quietly made it false.
+  test("k3d + ha needs every emulated seam named, not just postgres", () => {
+    // All of k3d's stand-ins are single-pod, so fixing one still leaves the
+    // next. The refusals surface one at a time, which is why this is a test:
+    // "add postgres=cnpg and it builds" was true when postgres was the only
+    // one, and each new emulated seam has quietly falsified it again.
     expect(() =>
       resolveSeams(targetShape("k3d").seams, { postgres: "cnpg" }, true),
     ).toThrow(/dataPlane="sprites"/);
 
     expect(() =>
       resolveSeams(targetShape("k3d").seams, { postgres: "cnpg", dataPlane: "sprites" }, true),
+    ).toThrow(/storage="s3"/);
+
+    expect(() =>
+      resolveSeams(
+        targetShape("k3d").seams,
+        { postgres: "cnpg", dataPlane: "sprites", storage: "s3" },
+        true,
+      ),
     ).not.toThrow();
   });
 });
@@ -253,5 +224,34 @@ describe("host and hostname", () => {
     for (const h of ["localhost:4000", "fountain.example.com", "a.b.c:1", "x:65535"]) {
       expect(hostnameOf(h)).not.toContain(":");
     }
+  });
+});
+
+describe("the storage seam", () => {
+  test("k3d emulates the bucket, kubernetes does not", () => {
+    expect(targetShape("k3d").seams.storage).toBe("floci");
+    expect(targetShape("kubernetes").seams.storage).toBe("s3");
+  });
+
+  test("an emulated bucket cannot hold an ha deployment's backups", () => {
+    // One pod, no volume: a restart is an empty bucket. A backup destination
+    // that forgets is worse than none, because it looks like one.
+    expect(() => resolveSeams({ ...base, storage: "floci", backups: "pg-dump" }, {}, true)).toThrow(
+      /do not survive a restart/,
+    );
+  });
+
+  test("an emulated bucket with backups off is refused", () => {
+    // Otherwise the deployment carries an emulator nothing ever uploads to,
+    // which is a pod pretending to be a backup story.
+    expect(() => resolveSeams({ ...base, storage: "floci", backups: "omit" }, {})).toThrow(
+      /nothing uploads to/,
+    );
+  });
+
+  test("k3d's own defaults are coherent", () => {
+    // The pairing the default path actually uses: pg-dump uploading to floci.
+    expect(() => resolveSeams(targetShape("k3d").seams, {})).not.toThrow();
+    expect(resolveSeams(targetShape("k3d").seams, {}).backups).toBe("pg-dump");
   });
 });

@@ -28,6 +28,19 @@ export type MonitoringMode = "omit" | "prometheus-operator";
  * What it is not is an agent runtime. See src/data/spritzer.ts.
  */
 export type DataPlaneMode = "sprites" | "spritzer";
+/**
+ * Where the backup seam uploads to.
+ *
+ * `s3` is any real S3-compatible bucket — S3, R2, Garage — reached at whatever
+ * `backupS3Endpoint` says, or AWS's own if that is unset. `floci` is an
+ * emulator of it running in the cluster, so the backup path is exercised for
+ * real against an emulated bucket rather than being the part nobody runs until
+ * a restore.
+ *
+ * The seam is an endpoint and a bucket, which is the whole reason it can be
+ * emulated: the CronJob is the same either way and cannot tell.
+ */
+export type StorageMode = "s3" | "floci";
 
 export interface Seams {
   postgres: PostgresMode;
@@ -37,6 +50,7 @@ export interface Seams {
   backups: BackupsMode;
   monitoring: MonitoringMode;
   dataPlane: DataPlaneMode;
+  storage: StorageMode;
 }
 
 /** Explicit seam choices — anything left undefined falls to the tier's default. */
@@ -48,6 +62,7 @@ export interface SeamOverrides {
   backups?: BackupsMode;
   monitoring?: MonitoringMode;
   dataPlane?: DataPlaneMode;
+  storage?: StorageMode;
 }
 
 /**
@@ -66,6 +81,7 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
     backups: over.backups ?? defaults.backups,
     monitoring: over.monitoring ?? defaults.monitoring,
     dataPlane: over.dataPlane ?? defaults.dataPlane,
+    storage: over.storage ?? defaults.storage,
   };
 
   // A bundled Postgres is a single pod with a volume. Saying "highly available"
@@ -86,6 +102,26 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
     throw new Error(
       `dataPlane="spritzer" is an in-memory emulator in a single pod and cannot back an "ha" deployment — ` +
         `use dataPlane="sprites" with a real SPRITES_TOKEN, or a non-ha tier for local work.`,
+    );
+  }
+
+  // floci keeps its buckets in one pod with no volume, so a restart loses every
+  // backup in it. Calling that the backup destination for an "ha" deployment is
+  // the same lie as the two above: it applies cleanly, and the thing you would
+  // reach for in an outage is gone.
+  if (s.storage === "floci" && ha) {
+    throw new Error(
+      `storage="floci" is an in-cluster emulator whose buckets do not survive a restart, and cannot hold the backups of an "ha" deployment — ` +
+        `use storage="s3" with a real bucket, or a non-ha tier for local work.`,
+    );
+  }
+
+  // A backup that uploads nowhere is not a backup. floci is a destination;
+  // "omit" backups with floci on would emit an emulator nothing writes to.
+  if (s.storage === "floci" && s.backups === "omit") {
+    throw new Error(
+      `storage="floci" with backups="omit" emits an emulator nothing uploads to — ` +
+        `set backups="pg-dump" (or "barman-pitr" with postgres="cnpg"), or storage="s3".`,
     );
   }
 

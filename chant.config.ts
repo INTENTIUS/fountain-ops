@@ -142,6 +142,10 @@ export default {
     // offline there is no account and a placeholder token against the real
     // API is a 401 nobody sees until they talk to an agent.
     dataPlane: { type: "string", enum: ["sprites", "spritzer"], required: false },
+    // Where the backup job uploads. "floci" is an S3 emulator in the cluster —
+    // the local default, because the alternative is a backup job with nowhere
+    // to put anything.
+    storage: { type: "string", enum: ["s3", "floci"], required: false },
 
     // ── seam inputs ───────────────────────────────────────────────────────
     // postgres=reference: nothing here — DATABASE_URL lives in the Secret,
@@ -186,6 +190,8 @@ export default {
     // what a local conversation does, so a floating tag would change what a
     // green run means with nothing in this repo changing.
     spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.4.1" },
+    // storage=floci. Pinned for the same reason spritzer is.
+    flociImage: { type: "string", default: "floci/floci:1.5.34" },
     // Unset means the cluster's default StorageClass, which is what k3d wants.
     pgStorageClass: { type: "string", required: false },
     backupSecretName: { type: "string", default: "fountain-backup-s3-credentials" },

@@ -56,7 +56,9 @@ just pg-logs      # the database
 
 ## The shape of it
 
-**Target** is where the substrate runs (`k3d` · `kubernetes`). **Tier** is how durable it is (`light` · `standard` · `ha`). Separate questions — and not a free grid: five of the six combinations build, and the sixth is refused with an error naming the seam that fixes it.
+**Target** is where the substrate runs (`k3d` · `kubernetes`). **Tier** is how durable it is (`light` · `ha`). Separate questions — and not a free grid: three of the four combinations build, and the fourth is refused with an error naming the seam that fixes it.
+
+How much of the machine it asks for is `size` (`small` · `medium` · `large`), orthogonal to both — a bigger single pod is not a more durable one.
 
 Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`, `dataPlane`. Every mode is expressible. What is refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates.
 
@@ -70,7 +72,7 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 |---|---|
 | **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify and sign in; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
 | **Does not work** | Completing a turn ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)); admin ([#31](https://github.com/INTENTIUS/fountain-ops/issues/31)) |
-| **Builds only** | `target=kubernetes`, `tier=standard`, and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
+| **Builds only** | `target=kubernetes` and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
 

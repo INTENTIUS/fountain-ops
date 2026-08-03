@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { resolveTier } from "../src/lib/tiers";
+import { resolveTier, sizeShape, defaultSize } from "../src/lib/tiers";
 import { resolveSeams, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
 import { tierShape } from "../src/lib/tiers";
 import { targetShape } from "../src/lib/targets";
@@ -96,14 +96,14 @@ describe("the target x tier matrix", () => {
   // (#28) because nothing enforced it. This is the enforcement: the docs now
   // name a specific number, so the number is a test.
   const targets = ["k3d", "kubernetes"] as const;
-  const tiers = ["light", "standard", "ha"] as const;
+  const tiers = ["light", "ha"] as const;
 
   const build = (target: (typeof targets)[number], tier: (typeof tiers)[number]) => {
     const shape = tierShape(tier);
     return resolveSeams(targetShape(target).seams, {}, shape.clustered);
   };
 
-  test("five of the six combinations resolve on their default seams", () => {
+  test("three of the four combinations resolve on their default seams", () => {
     const ok = targets.flatMap((t) =>
       tiers.map((tier) => {
         try {
@@ -116,9 +116,7 @@ describe("the target x tier matrix", () => {
     );
     expect(ok.filter(Boolean)).toEqual([
       "k3d/light",
-      "k3d/standard",
       "kubernetes/light",
-      "kubernetes/standard",
       "kubernetes/ha",
     ]);
   });
@@ -253,5 +251,45 @@ describe("the storage seam", () => {
     // The pairing the default path actually uses: pg-dump uploading to floci.
     expect(() => resolveSeams(targetShape("k3d").seams, {})).not.toThrow();
     expect(resolveSeams(targetShape("k3d").seams, {}).backups).toBe("pg-dump");
+  });
+});
+
+describe("tiers are distinct, and size is not a tier", () => {
+  // The reason there are two tiers and not three. `standard` used to sit
+  // between them and emit a deployment identical to `light` — same kinds, same
+  // replicas, same absence of clustering — differing only in resource requests
+  // and retention. A bigger single pod survives exactly the same failures as a
+  // smaller one, which is none of them (#21).
+  test("every tier differs from every other in shape, not just in size", () => {
+    const shapes = (["light", "ha"] as const).map((t) => {
+      const s = tierShape(t);
+      return `${s.replicas}/${s.clustered}`;
+    });
+    expect(new Set(shapes).size).toBe(shapes.length);
+  });
+
+  test("size changes resources and nothing else", () => {
+    // If this ever fails, a sizing knob has grown a structural consequence and
+    // has become the thing #21 was about.
+    const small = sizeShape("small");
+    const large = sizeShape("large");
+    expect(small.cpu).not.toBe(large.cpu);
+    expect(Object.keys(small).sort()).toEqual(["cpu", "cpuLimit", "memory", "memoryLimit"]);
+  });
+
+  test("dropping the middle tier shrank nothing", () => {
+    // light and ha keep exactly the resources they carried before, and what
+    // `standard` asked for is still reachable by name.
+    expect(sizeShape(defaultSize("light")).memory).toBe("512Mi");
+    expect(sizeShape(defaultSize("ha")).cpu).toBe("500m");
+    expect(sizeShape("medium").memory).toBe("1Gi");
+  });
+
+  test("a PodDisruptionBudget only where there is availability to budget", () => {
+    // minAvailable: 1 over a single pod blocks every voluntary eviction — a
+    // drain hangs forever and the fix is deleting the object that was supposed
+    // to protect you. So: only when clustered.
+    expect(tierShape("light").clustered).toBe(false);
+    expect(tierShape("ha").clustered).toBe(true);
   });
 });

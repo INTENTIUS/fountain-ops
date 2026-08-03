@@ -32,7 +32,6 @@ doctor:
     #!/usr/bin/env bash
     set -uo pipefail
     ok=0
-
     # Two answers per tool: how to install it on this platform, and the
     # platform-independent fallback for anyone without a package manager.
     case "$(uname -s)" in
@@ -46,10 +45,15 @@ doctor:
         k3d)     echo "curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash" ;;
         kubectl) echo "https://kubernetes.io/docs/tasks/tools/#kubectl" ;;
         node|npm) echo "https://nodejs.org/en/download  (node ships npm)" ;;
+        jq)      echo "https://jqlang.github.io/jq/download/" ;;
       esac
     }
 
-    for t in docker k3d kubectl node npm; do
+    # jq is in the list because `just verify-email` builds a pod spec with it.
+    # macOS does not ship it, and without this the failure is a bare
+    # "jq: command not found" from inside a recipe — after the preflight that
+    # exists to prevent exactly that has already passed.
+    for t in docker k3d kubectl node npm jq; do
       # kubectl takes `version`, not `--version`, and prints nothing for the
       # latter — so ask each tool the way it wants to be asked.
       case "$t" in

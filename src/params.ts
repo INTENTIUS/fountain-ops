@@ -71,6 +71,7 @@ export const seams: Seams = resolveSeams(
     backups: params.backups as Seams["backups"] | undefined,
     monitoring: params.monitoring as Seams["monitoring"] | undefined,
     dataPlane: params.dataPlane as Seams["dataPlane"] | undefined,
+    storage: params.storage as Seams["storage"] | undefined,
   },
   tier.clustered,
 );
@@ -102,7 +103,22 @@ export const backupSchedule = (params.backupSchedule as string | undefined) ?? "
 /** Retention comes from the tier — it is durability, not a seam input. */
 export const backupRetentionDays = (params.backupRetentionDays as number | undefined) ?? tier.retentionDays;
 export const backupBucket = (params.backupBucket as string | undefined) ?? "fountain-backups";
-export const backupS3Endpoint = (params.backupS3Endpoint as string | undefined) ?? target.s3Endpoint;
+/**
+ * Where the backup job uploads.
+ *
+ * Explicit wins; otherwise the storage seam decides. Unset means the AWS
+ * default endpoint, which is what `storage="s3"` against a real bucket wants.
+ *
+ * It is deliberately NOT a target property any more. It used to default to
+ * `http://localhost:4566` on k3d to match a floci on the host, which from
+ * inside a pod is the pod — an endpoint that could never have worked from the
+ * one place that uses it.
+ */
+export const backupS3Endpoint =
+  (params.backupS3Endpoint as string | undefined) ??
+  (seams.storage === "floci"
+    ? `http://fountain-floci.${namespace}.svc.cluster.local:4566`
+    : undefined);
 
 // ── cnpg seam ──────────────────────────────────────────────────────────────
 export const cnpgImage =
@@ -121,6 +137,10 @@ export const backupSecretName =
  */
 export const pitrSchedule = (params.pitrSchedule as string | undefined) ?? "0 47 2 * * *";
 assertSixFieldSchedule(pitrSchedule);
+
+// ── storage seam ───────────────────────────────────────────────────────────
+/** Pinned for the same reason spritzer is: it decides what a green run means. */
+export const flociImage = (params.flociImage as string | undefined) ?? "floci/floci:1.5.34";
 
 // ── data plane seam ────────────────────────────────────────────────────────
 /**
@@ -160,6 +180,13 @@ export const labels = {
  * is a local const — spreading an imported binding is EVL004.
  */
 export const serviceLabels = { ...labels, monitoring: "fountain-web" };
+
+/** The emulated bucket — its own component, its own selector. */
+export const flociLabels = {
+  "app.kubernetes.io/name": "fountain",
+  "app.kubernetes.io/instance": env,
+  "app.kubernetes.io/component": "floci",
+};
 
 /** The emulated data plane, likewise — its own component, its own selector. */
 export const spritzerLabels = {

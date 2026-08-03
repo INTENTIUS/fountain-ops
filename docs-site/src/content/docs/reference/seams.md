@@ -16,9 +16,26 @@ alone.
 | `backups` | `omit` · `pg-dump` · `barman-pitr` |
 | `monitoring` | `omit` · `prometheus-operator` |
 | `dataPlane` | `sprites` · `spritzer` |
+| `storage` | `s3` · `floci` |
 
 `reference` means "it already exists, here is how to reach it". `omit` means
 "this deployment does not have one".
+
+## The emulated pair
+
+`k3d` defaults two seams to in-cluster emulators, and both are the same idea:
+the seam is a URL, so it can point somewhere fake without the thing on the
+other side being built differently.
+
+`dataPlane=spritzer` is the Sprites API. `storage=floci` is an S3-compatible
+bucket, so the backup job runs its real dump → upload → verify → prune path
+against an emulated store instead of being the part nobody exercises until a
+restore.
+
+`backupS3Endpoint` used to default to `http://localhost:4566`, matching a floci
+on your laptop. From inside a pod `localhost` is the pod, so that endpoint could
+never reach it — the upload container was talking to itself. In the cluster the
+address is a Service name that resolves from where the job actually runs.
 
 ## What is refused
 

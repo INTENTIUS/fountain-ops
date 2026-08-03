@@ -68,7 +68,7 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 
 | | |
 |---|---|
-| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify and sign in; a sandbox is provisioned and populated. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
+| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify and sign in; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
 | **Does not work** | Completing a turn ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)); admin ([#31](https://github.com/INTENTIUS/fountain-ops/issues/31)) |
 | **Builds only** | `target=kubernetes`, `tier=standard`, and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
 

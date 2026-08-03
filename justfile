@@ -36,7 +36,7 @@ default:
 # ── the whole loop ─────────────────────────────────────────────────────────
 
 # Stand up everything, from nothing, and prove it serves.
-up: cluster-up secret build apply wait verify
+up: cluster-up secret build apply wait storage-init verify
     @echo ""
     @echo "fountain is up. Reach it with:  just forward   →  http://localhost:4000"
 
@@ -146,8 +146,37 @@ secret:
       --from-literal=MASTER_SECRETS_KEY="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')" \
       --from-literal=POSTGRES_PASSWORD="$PGPASS" \
       --from-literal=DATABASE_URL="postgres://fountain:${PGPASS}@fountain-postgres.{{ns}}.svc.cluster.local:5432/fountain" \
-      --from-literal=SPRITES_TOKEN="local-dev-not-a-real-token"
+      --from-literal=SPRITES_TOKEN="local-dev-not-a-real-token" \
+      --from-literal=AWS_ACCESS_KEY_ID="local-dev-not-a-real-key" \
+      --from-literal=AWS_SECRET_ACCESS_KEY="local-dev-not-a-real-secret" \
+      --from-literal=AWS_DEFAULT_REGION="us-east-1"
     echo "secret {{secret}} created"
+
+# Create the backup bucket when the storage seam is emulated.
+#
+# floci starts empty, and `aws s3 cp` to a bucket that does not exist fails the
+# way a missing credential does — late, in the upload container, after a good
+# dump has already been taken. A real bucket is yours to create; this only ever
+# touches the emulator.
+storage-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ep="$(npx chant build src --format yaml {{params}} 2>/dev/null | awk '/name: S3_ENDPOINT/{getline; print $2}' | head -1)"
+    case "$ep" in
+      *fountain-floci*) ;;
+      *) echo "  storage is not emulated — nothing to create"; exit 0 ;;
+    esac
+    bucket="$(npx chant build src --format yaml {{params}} 2>/dev/null | awk '/name: BUCKET/{getline; print $2}' | head -1)"
+    kubectl rollout status deploy/fountain-floci -n "{{ns}}" --timeout=180s >/dev/null
+    # `mb` on a bucket that already exists is an error, and re-running `just up`
+    # must stay a no-op, so an existing bucket is success.
+    kubectl run "floci-mb-$$" --rm -i --restart=Never -n "{{ns}}" --quiet \
+      --image=amazon/aws-cli:2.31.19 \
+      --env=AWS_ACCESS_KEY_ID=local-dev-not-a-real-key \
+      --env=AWS_SECRET_ACCESS_KEY=local-dev-not-a-real-secret \
+      --env=AWS_DEFAULT_REGION=us-east-1 \
+      -- --endpoint-url "$ep" s3 mb "s3://$bucket" 2>&1 | grep -vE "^pod .* deleted$" || true
+    echo "  ✓ s3://$bucket on the emulated store"
 
 # ── build and apply ────────────────────────────────────────────────────────
 

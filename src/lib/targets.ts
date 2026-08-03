@@ -12,11 +12,12 @@
  * Separate questions, though, is not the same as a free grid, and the earlier
  * wording here ("any tier runs on any target") was tested and found false:
  *
- *   k3d + ha  ->  refused. Two of k3d's defaults are single-pod stand-ins:
- *                 postgres="bundled" is one pod with a volume, and
- *                 dataPlane="spritzer" holds every sandbox in memory. Neither
- *                 can carry "ha", and they are refused one at a time — so
- *                 naming postgres alone gets you the next error, not a build.
+ *   k3d + ha  ->  refused. Every one of k3d's defaults is a single-pod
+ *                 stand-in: postgres="bundled" is one pod with a volume,
+ *                 dataPlane="spritzer" holds every sandbox in memory, and
+ *                 storage="floci" holds every backup in memory. None can carry
+ *                 "ha", and they are refused one at a time — so naming
+ *                 postgres alone gets you the next error, not a build.
  *
  * A tier never fails because of the target as such. It fails because the seam
  * defaults that are coherent on that substrate cannot carry it, which is a
@@ -36,17 +37,12 @@ export interface TargetShape {
   emulated: boolean;
   /** Where each seam starts on this substrate. Every one is overridable. */
   seams: Seams;
-  /** Default S3 endpoint for the backup seam. floci, locally. */
-  s3Endpoint?: string;
 }
 
 export function targetShape(target: Target): TargetShape {
   if (target === "k3d") {
     return {
       emulated: true,
-      // floci speaks S3, so the backup path runs for real against an emulated
-      // bucket rather than being the part nobody exercises until a restore.
-      s3Endpoint: "http://localhost:4566",
       seams: {
         // A plain single-instance Postgres in the cluster. Not CNPG — this
         // substrate has no operator and does not want one.
@@ -63,6 +59,10 @@ export function targetShape(target: Target): TargetShape {
         // placeholder token against the real API is not a data plane, it is a
         // 401 nobody sees until they try to talk to an agent.
         dataPlane: "spritzer",
+        // The emulator, in the cluster. The backup path then runs for real
+        // against an emulated bucket instead of being the part nobody
+        // exercises until a restore.
+        storage: "floci",
       },
     };
   }
@@ -82,6 +82,7 @@ export function targetShape(target: Target): TargetShape {
       // expressible and occasionally what a staging cluster wants; it is not
       // what an unconfigured one should default to.
       dataPlane: "sprites",
+      storage: "s3",
     },
   };
 }

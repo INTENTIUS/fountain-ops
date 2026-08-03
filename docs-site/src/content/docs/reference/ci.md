@@ -85,3 +85,25 @@ k8s: { profiles: { staging: { context: "your-context" } } }
 `just` exports `FOUNTAIN_ENV=local`, so a local deploy is owned, labelled and
 bound under one name — without that the ownership marker says `dev` while
 behold reads `--env local` and matches nothing.
+
+### Operating it from there
+
+Two more things behold finds by convention, which turn the picture into a
+control plane:
+
+| | |
+|---|---|
+| `ops/fountain-apply.op.ts` | an `ApplyOp`, so **Run** streams Build → Plan (a live diff) → Apply |
+| `scripts/local/local-up.sh` | so the k3d substrate pill offers **Bring up** from cold |
+
+Both are thin. The scripts delegate to `just cluster-up` and `just down` rather
+than being a second way to create a cluster, and the Op is bound to `local`
+with `delete: "owned-only"` — prune is scoped to the ownership marker, so it
+removes what this project stopped declaring and never touches anything it did
+not put there.
+
+`fountain-apply` is not gated. A gated apply needs Temporal for the durable
+approval wait, and gating belongs on the Ops that can destroy something
+([#3](https://github.com/INTENTIUS/fountain-ops/issues/3),
+[#8](https://github.com/INTENTIUS/fountain-ops/issues/8)) rather than on one
+that applies a Deployment to a laptop.

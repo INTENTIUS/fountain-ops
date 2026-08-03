@@ -82,6 +82,8 @@ justfile             every target you need
 ci/pipeline.ts       this repo's own CI, declared
 pages/pipeline.ts    the Pages workflow, declared the same way
 workflows/shared.ts  the pins both workflows share
+ops/                 the deploy Op, for behold's Run button
+scripts/local/       cluster lifecycle, where behold looks for it
 docs-site/           the published site — Astro + Starlight
 src/
   params.ts          the one place build params are read

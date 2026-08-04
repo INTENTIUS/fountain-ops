@@ -8,7 +8,7 @@ description: Self-hosted fountain, deployed by chant. Targets, tiers and seams, 
 template: splash
 hero:
   title: fountain-ops
-  tagline: Self-hosted fountain, deployed by chant. Two targets, three tiers, seven seams, and a status table that says what is actually verified.
+  tagline: Self-hosted fountain, deployed by chant. Two targets, two tiers, eight seams, and a status table that says what is actually verified.
   actions:
     - text: Stand it up
       link: /fountain-ops/getting-started/stand-it-up/
@@ -36,14 +36,15 @@ that second step is not optional.
 <CardGrid stagger>
   <Card title="Two axes, not a grid" icon="setting">
     **Target** is where the substrate runs. **Tier** is how durable it is.
-    Separate questions — and combinations that would build green and mean
-    something other than they say are refused, with an error naming the seam
-    that fixes it.
+    Separate questions. Combinations that would build green and mean something
+    other than they say are refused, with an error naming the seam that fixes
+    it.
   </Card>
-  <Card title="Seven seams" icon="puzzle">
-    Every dependency has a mode. `postgres`, `secrets`, `ingress`, `tls`,
-    `backups`, `monitoring`, `dataPlane`. The target picks defaults coherent on
-    that substrate; setting one replaces exactly that seam.
+  <Card title="Eight seams" icon="puzzle">
+    `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`,
+    `dataPlane`, `storage`. Each is a dependency with a mode. The target picks
+    defaults coherent on that substrate; setting one replaces exactly that
+    seam.
   </Card>
   <Card title="Offline data plane" icon="laptop">
     `dataPlane=spritzer` points fountain at an emulator in the cluster. The app
@@ -52,15 +53,14 @@ that second step is not optional.
   </Card>
   <Card title="A status table that says no" icon="approve-check">
     Most rows do not say "works". They say **Builds only**, or **Emitted, never
-    run**, or name the issue that blocks them. A backup nobody has restored is
-    a hypothesis.
+    run**, or name the issue that blocks them.
   </Card>
 </CardGrid>
 
 ## What you drive it with
 
 `just` targets. You do not need to know chant to use this, and no resource file
-reads `process.env` — every input is a declared build parameter, so the same
+reads `process.env`: every input is a declared build parameter, so the same
 parameters produce the same resources.
 
 ```bash
@@ -74,5 +74,5 @@ just down         # remove everything it created, and nothing it did not
 
 - [What this is](/fountain-ops/getting-started/overview/) — the shape of the repo
 - [Targets and tiers](/fountain-ops/reference/targets-and-tiers/) — the two axes and what is refused
-- [The data plane](/fountain-ops/reference/data-plane/) — and exactly what a local conversation proves
-- [Status](/fountain-ops/status/) — authoritative, and the section to read before believing anything else
+- [The data plane](/fountain-ops/reference/data-plane/) — what a local conversation proves
+- [Status](/fountain-ops/status/) — what is verified today; read it before believing anything else

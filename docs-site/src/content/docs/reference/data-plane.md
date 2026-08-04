@@ -8,13 +8,13 @@ base URL. `dataPlane=spritzer` points that URL at
 [spritzer](https://github.com/INTENTIUS/spritzer), an emulator of the Sprites
 API running in the cluster.
 
-The seam is configuration and nothing else. The app is not built differently and
-cannot tell the difference, which is what makes a local run exercise the real
-control-plane path instead of a stub of it.
+The seam is pure configuration. The app is not built differently and cannot
+tell the difference, so a local run exercises the real control-plane path
+instead of a stub of it.
 
 | target | default |
 |---|---|
-| `k3d` | `spritzer` — offline there is no Sprites account, and a placeholder token against the real API is a 401 nobody sees until they talk to an agent |
+| `k3d` | `spritzer`. Offline there is no Sprites account, and a placeholder token against the real API is a 401 nobody sees until they talk to an agent |
 | `kubernetes` | `sprites` |
 
 ## Provisioning works
@@ -24,11 +24,11 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## The turn finishes, or does not, depending on a race
+## Whether a turn finishes is a race
 
-Whether a turn completes is decided by which branch fountain takes, and that is
-a race rather than a property of the deployment. From
-`conversation_server.ex` in the pinned `v0.4.0`:
+Whether a turn completes is decided by which branch fountain takes, and that
+is a race, not a property of the deployment. From `conversation_server.ex` in
+the pinned `v0.4.0`:
 
 ```elixir
 case sandbox.status do
@@ -38,9 +38,9 @@ end
 ```
 
 If provisioning marks the sandbox `ready` before the ConversationServer
-dispatches, fountain reattaches — and reattach calls `list_sessions` over plain
-HTTP, which spritzer serves as a WebSocket only. It answers `426` and the turn
-is abandoned:
+dispatches, fountain reattaches. Reattach calls `list_sessions` over plain
+HTTP, which spritzer serves as a WebSocket only, so it answers `426` and the
+turn is abandoned:
 
 ```
 event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
@@ -50,28 +50,28 @@ If dispatch gets there first, the sandbox is still `pending`, fountain
 provisions fresh, and the turn runs to `exit_code: 0`.
 
 :::caution[A faster machine is more likely to fail]
-Whoever wins that race is decided by speed, so this gets *more* likely on
-better hardware. Measured with identical image digests on both sides:
+The race is won by speed, so this gets *more* likely on better hardware.
+Measured with identical image digests on both sides:
 
 | | |
 |---|---|
 | M-series laptop | reattach taken, turn orphaned — **5 of 5** |
 | GitHub runner | no reattach, turn completed — **2 of 2** |
 
-Consistent on either machine, which is why it reads as deterministic until you
-try the other one.
+It is consistent on any one machine, so it reads as deterministic until you
+try another one.
 [#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the full probe.
 :::
 
 [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is the `426`
-itself, and it is a real bug — it would break the legitimate reattach the
-branch was written for, after a BEAM restart. It is not the reason a *first*
-turn fails. That a fresh conversation reaches the reattach branch at all is the
-upstream problem.
+itself, and it is a real bug: it would break the legitimate reattach the
+branch was written for, after a BEAM restart. But it is not the reason a
+*first* turn fails. That a fresh conversation reaches the reattach branch at
+all is the upstream problem.
 
 So the emulated data plane proves the substrate can provision and address a
 sandbox. When the turn does complete, what completed is spritzer echoing the
-command back — see below.
+command back; see below.
 
 ## What it will never prove
 
@@ -91,7 +91,7 @@ is likewise not somewhere to benchmark durability.
 
 `just verify` asks `/health`. A 200 there says the release booted; it does not
 say it reached its database, resolved its secrets, provisioned a sandbox or
-streamed anything back. This does:
+streamed anything back. `just verify-conversation` checks the rest:
 
 ```bash
 export FOUNTAIN_PASSWORD=...                       # not on the command line
@@ -100,7 +100,7 @@ just verify-conversation you@example.com strict    # plumbing + a model replied
 ```
 
 Both make a throwaway agent, open one conversation, and tear both down on the
-way out — including when an assertion fails, which is the case that matters.
+way out, including when an assertion fails, which is the case that matters.
 
 **`plumbing`** asserts a sandbox was provisioned, a turn ran, events streamed in
 order, and the turn exited 0. It catches a broken Secret, an unreachable data
@@ -117,10 +117,10 @@ plane, a migration that did not run.
 
 The emulator satisfies every plumbing assertion with no model in the loop at
 all, so a gate that cannot tell those apart is worse than no gate. This one
-fails closed rather than green.
+fails closed.
 
 Against the local default, `plumbing` currently fails at the orphaned turn
-above. That is the gate working.
+above, which is the gate doing its job.
 
 ## For real conversations
 

@@ -34,11 +34,46 @@ gate that stops it, and it runs in CI as well as locally.
 build. Deliberately identical, so the thing people run before pushing keeps
 predicting what CI does.
 
-**e2e** — stands the whole deployment up on k3d and asserts what the docs claim:
-`just up` from nothing, `/health/ready` actually reaching Postgres, re-running
-`just up` leaving `MASTER_SECRETS_KEY` byte-identical, and `just crds` then
-`just dry-run` with every seam on so a real API server validates the CNPG,
-Traefik, Infisical, cert-manager and Prometheus resources.
+**e2e** — the same `just e2e`, for the same reason. One step, not eight.
+
+```bash
+just e2e
+```
+
+Stands up from nothing and asserts, in order:
+
+| | |
+|---|---|
+| readiness | `/health/ready` answers `{"database":"ok"}` — the app reached Postgres, not just booted |
+| the master key | re-running `just up` leaves `MASTER_SECRETS_KEY` byte-identical |
+| a clean start | the app's `restartCount` is 0, so the Postgres wait has not regressed |
+| the backup | taken, then restored into a throwaway and table-matched against live |
+| the account path | register over the API, `verify-email`, headless throughout |
+| the conversation gate | fails, **for the documented reason** |
+| every seam | `just crds` then `just dry-run`, validated by a real API server |
+
+Then it tears down. On failure it leaves the cluster up so there is something
+to look at; CI runs its own teardown regardless.
+
+:::note[One assertion is pinned to a failure]
+The conversation gate does not pass today — fountain's reattach calls exec over
+plain HTTP and spritzer answers `426`, so the turn is orphaned
+([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)).
+
+`just e2e` asserts that specific failure rather than asserting "it fails",
+which would go green for any breakage at all. It also fails when the gate
+*starts passing* — deliberately, because that means #18 has landed and the
+status page needs rewriting, and a silent flip to green is how that goes
+unnoticed for a month.
+:::
+
+Until this existed the e2e assertions lived only in `ci/pipeline.ts` as
+workflow steps, so answering "do the documented claims still hold on my
+machine?" meant reading the pipeline and transcribing it by hand. Three of the
+gates above — the backup restore, the conversation gate and the account path —
+were not in CI at all, which left `restore-drill` as the thing that turns "a
+backup nobody has restored is a hypothesis" into a fact while nothing re-ran
+it.
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving
 pointer, and whoever controls it controls what runs here.

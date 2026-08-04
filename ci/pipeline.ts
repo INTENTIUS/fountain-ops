@@ -93,46 +93,22 @@ export const e2e = new Job({
     }),
     new Step({ name: "Install", run: "npm ci" }),
     new Step({ name: "Preflight", run: "just doctor" }),
-    // The README's central claim: this stands up from nothing and serves.
-    // `just up` ends on an in-cluster probe of /health, so a green run here
-    // means the getting-started path still works.
-    new Step({ name: "Stand it up", run: "just up" }),
-    // /health only proves the process is alive. /health/ready proves it
-    // reached Postgres, which is the half that actually breaks.
-    new Step({
-      name: "Readiness, including the database",
-      run: [
-        `kubectl run ready --rm -i --restart=Never -n fountain \\`,
-        `  --image=curlimages/curl:8.11.1 --quiet -- \\`,
-        `  curl -fsS -m 10 http://fountain.fountain.svc.cluster.local/health/ready \\`,
-        `  | tee /dev/stderr | grep -q '"database":"ok"'`,
-      ].join("\n"),
-    }),
-    // Re-running is the documented recovery advice, and the secret check is
-    // the one with real consequences: a regenerated MASTER_SECRETS_KEY makes
-    // every stored secret unrecoverable and looks like a successful deploy.
-    new Step({
-      name: "Re-running up does not rotate the secret",
-      run: [
-        `before=$(kubectl get secret fountain-secrets -n fountain -o jsonpath='{.data.MASTER_SECRETS_KEY}')`,
-        `just up`,
-        `after=$(kubectl get secret fountain-secrets -n fountain -o jsonpath='{.data.MASTER_SECRETS_KEY}')`,
-        `test "$before" = "$after"`,
-      ].join("\n"),
-    }),
-    // Every seam that needs a CRD, validated against a real API server rather
-    // than against our own expectations. No controllers, so nothing reconciles
-    // — that gap is fountain-ops#22.
-    new Step({ name: "Install the operator CRDs", run: "just crds" }),
-    new Step({
-      name: "A real API server accepts every seam",
-      run: [
-        `just dry-run --param postgres=cnpg --param backups=barman-pitr \\`,
-        `  --param ingress=traefik --param tls=cert-manager \\`,
-        `  --param secrets=infisical --param monitoring=prometheus-operator \\`,
-        `  --param scheme=https --param host=fountain.ci.example.com`,
-      ].join("\n"),
-    }),
+    // One step, and deliberately so.
+    //
+    // These assertions used to live here as eight separate workflow steps,
+    // which meant the only way to run them was to push. `just check` had
+    // always been identical to the check job for exactly this reason — so
+    // that what people run locally predicts what CI does — and the e2e half
+    // had no such target. It does now, and this calls it rather than
+    // restating it, so the two cannot drift.
+    //
+    // `just e2e` stands up from nothing, asserts readiness through to the
+    // database, that a re-run does not rotate the master key, that the app
+    // starts without crashing first, that the backup restores and matches
+    // live, that the account path works headlessly, that the conversation
+    // gate fails for the documented reason and not another one, and that a
+    // real API server accepts every seam. Then it tears down.
+    new Step({ name: "Stand it up and assert every claim", run: "just e2e" }),
     // Logs beat a red X with no context, and only when it failed.
     new Step({
       name: "Diagnostics",

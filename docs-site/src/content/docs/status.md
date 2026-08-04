@@ -50,3 +50,15 @@ last one was true when it was written and was quietly falsified by a later seam.
 
 That is why the specific claims here are asserted in tests where they can be,
 and why this page prefers **Builds only** to a word that sounds better.
+
+Most of the **Verified** table is now re-asserted on every push rather than
+having been true once. `just e2e` — the whole of CI's e2e job, and runnable on
+a laptop — stands up from nothing and checks readiness through to the database,
+the master key surviving a re-run, the backup restoring and matching live, the
+account path end to end, and every seam against a real API server. The rows it
+does not cover are the ones needing operators or a cluster this repo did not
+create, and they are the rows that still say so.
+
+It also pins the conversation gate to its *failure*, so
+[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) landing breaks
+the build instead of quietly making this page wrong in the other direction.

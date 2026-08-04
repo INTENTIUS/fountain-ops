@@ -62,28 +62,8 @@ jobs:
         run: npm ci
       - name: Preflight
         run: just doctor
-      - name: Stand it up
-        run: just up
-      - name: Readiness, including the database
-        run: |
-          kubectl run ready --rm -i --restart=Never -n fountain \
-            --image=curlimages/curl:8.11.1 --quiet -- \
-            curl -fsS -m 10 http://fountain.fountain.svc.cluster.local/health/ready \
-            | tee /dev/stderr | grep -q '"database":"ok"'
-      - name: Re-running up does not rotate the secret
-        run: |
-          before=$(kubectl get secret fountain-secrets -n fountain -o jsonpath='{.data.MASTER_SECRETS_KEY}')
-          just up
-          after=$(kubectl get secret fountain-secrets -n fountain -o jsonpath='{.data.MASTER_SECRETS_KEY}')
-          test "$before" = "$after"
-      - name: Install the operator CRDs
-        run: just crds
-      - name: A real API server accepts every seam
-        run: |
-          just dry-run --param postgres=cnpg --param backups=barman-pitr \
-            --param ingress=traefik --param tls=cert-manager \
-            --param secrets=infisical --param monitoring=prometheus-operator \
-            --param scheme=https --param host=fountain.ci.example.com
+      - name: Stand it up and assert every claim
+        run: just e2e
       - name: Diagnostics
         if: failure()
         run: |

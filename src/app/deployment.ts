@@ -171,12 +171,14 @@ export const deployment = new Deployment({
               // visible error, so it makes you say so — "none" is a real
               // answer, absent is not.
               { name: "EMAIL_DELIVERY", value: emailDelivery },
-              // Off unless asked for. The OS variable wins over the hardcoded
-              // `traces_exporter: :otlp` in fountain's runtime config, which is
-              // the only way to stop it — verified by watching the 401s stop.
+              // Off unless asked for. Upstream also defaults to off since
+              // v0.4.0 (fountain#317), so this is explicitness now, not the
+              // workaround it started as. See params.ts.
               { name: "OTEL_TRACES_EXPORTER", value: otelTraces },
               // The subscription gate is a lock with no key on a self-hosted
-              // instance unless Stripe is configured.
+              // instance unless Stripe is configured. Upstream defaults it off
+              // since v0.4.0; stated anyway, because the gate being off is a
+              // property of this deployment, not an inherited default.
               { name: "BILLING_ENABLED", value: "false" },
               // An instance on the public internet with registration open will
               // be found. Close it once you have your account.

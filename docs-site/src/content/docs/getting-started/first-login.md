@@ -64,19 +64,34 @@ A loop with no error. Someone hitting it concludes their password is wrong.
 
 ## How it runs
 
-Not `kubectl exec` into the running pod. `Release.verify_email/1` calls
-`ensure_all_started`, which boots the whole application including the metrics
-endpoint on 9568 — already bound in the pod that is serving — so the documented
-`bin/fountain_server eval` dies with `:eaddrinuse` before it reaches the
-database.
+Not `kubectl exec` into the running pod. The recipe runs a separate pod and
+lifts its spec from the live Deployment, so the eval gets exactly the env the
+app runs with and cannot drift from it.
 
-The recipe runs a separate pod and lifts its spec from the live Deployment, so
-the eval gets exactly the env the app runs with and cannot drift from it.
+On `v0.3.0` the separate pod was forced rather than chosen: `Release` tasks
+booted the whole application, metrics endpoint on 9568 included — already
+bound in the pod that is serving — so the documented `bin/fountain_server
+eval` died with `:eaddrinuse` before it reached the database. Since `v0.4.0`
+these tasks start only the database connection
+([fountain#256](https://github.com/BinaryBourbon/fountain/issues/256)), so
+`exec` would work now. The separate pod stays, because leaving the serving pod
+alone is worth keeping.
 
 ## Admin
 
-Making an account an admin needs `Fountain.Release.promote_admin/1`, which is on
-upstream's `main` and **not in the pinned `v0.3.0`**. Nothing here exposes it
-yet — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31).
+```bash
+just promote-admin you@example.com
+```
+
+`Fountain.Release.promote_admin/1` is upstream's first-admin bootstrap —
+before it existed, the deploy guides ended in raw SQL against the production
+database. It is in the pin since `v0.4.0`;
+[#31](https://github.com/INTENTIUS/fountain-ops/issues/31) tracked waiting for
+it. The grant is audit-recorded as `admin.role.granted` with a nil actor, so a
+promotion made this way is as visible in the admin audit trail as one made
+from the panel.
+
+Verify the account first — admin does not skip email verification, and the
+recipe expects a registered address either way.
 
 You do not need admin to use the instance.

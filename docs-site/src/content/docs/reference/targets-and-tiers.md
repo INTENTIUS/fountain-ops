@@ -1,6 +1,6 @@
 ---
 title: Targets and tiers
-description: Two separate questions — and why they are not a free grid.
+description: Two separate questions, and why they are not a free grid.
 ---
 
 **Target** is where the substrate runs. **Tier** is how durable it is. Separate
@@ -17,14 +17,14 @@ not a cut-down fountain, it is a smaller one.
 
 ## There used to be three
 
-`standard` sat between them and emitted a deployment identical to `light` — same
+`standard` sat between them and emitted a deployment identical to `light`: same
 kinds, same replica count, the same absence of clustering. The only differences
 were resource requests and backup retention.
 
-A bigger single pod is not a more durable one. It survives exactly the same set
-of failures, which is none of them, so the middle rung held nothing — and
-someone picking it believed they had bought something between `light` and `ha`.
-They had bought RAM.
+A bigger single pod is not a more durable one. It survives exactly the same
+set of failures, which is none of them, so the middle rung held nothing.
+Someone picking it believed they had bought durability between `light` and
+`ha`, when what they had bought was RAM.
 
 Sizing is now its own parameter, which is what it always was:
 
@@ -34,27 +34,25 @@ just params="--param tier=light --param size=large" up
 ```
 
 `size` defaults to what each tier already carried, so nothing shrank. A test
-asserts every tier differs from every other in *shape* rather than only in
-size — if that fails again, the ladder has grown an empty rung.
+asserts every tier differs from every other in *shape*, not only in size; if
+that fails, the ladder has grown an empty rung again.
 
 ## The PodDisruptionBudget
 
-`ha` emits one; `light` does not, and that is deliberate rather than an
-omission. chant's own post-synth check had been reporting the absence at `ha`
-for as long as the tier existed:
+`ha` emits one; `light` deliberately does not. chant's own post-synth check
+had been reporting the absence at `ha` for as long as the tier existed:
 
 ```
 Deployment "fountain" has 2 replicas but no PodDisruptionBudget
 ```
 
-Without one, a node drain can take both replicas at once — `maxUnavailable: 0`
+Without one, a node drain can take both replicas at once: `maxUnavailable: 0`
 constrains a *rollout*, and an eviction is not a rollout.
 
-At one replica a PDB is not a smaller safeguard but a worse thing:
-`minAvailable: 1` over a single pod means no voluntary eviction can ever
-succeed, so `kubectl drain` hangs and the fix is deleting the object that was
-supposed to protect you. A single-replica deployment has no availability to
-budget.
+At one replica a PDB is actively harmful. `minAvailable: 1` over a single pod
+means no voluntary eviction can ever succeed, so `kubectl drain` hangs and the
+fix is deleting the object that was supposed to protect you. A single-replica
+deployment has no availability to budget.
 
 ## Separate is not a free grid
 
@@ -82,7 +80,7 @@ data plane seam landed and quietly made it false. Both are now asserted in
 misleading a reader.
 :::
 
-## The replica count is not a free knob
+## Replicas and clustering are one decision
 
 Above one replica, fountain's pods must form a real Erlang cluster or they run
 as isolated islands, and conversation streaming breaks for whichever pod did not
@@ -110,14 +108,13 @@ does is not what `k3d` exercises:
 | `backups` | `pg-dump` | `omit` |
 | `dataPlane` | `spritzer` | `sprites` |
 
-Applying it turned up two things that had never run, both of which applied
-cleanly and did nothing useful.
+Applying it turned up three things that had never actually run.
 
 ### `DATABASE_SSL` was derived, not settable
 
-`postgres=reference` set it to `true` unconditionally — "anything you did not
+`postgres=reference` set it to `true` unconditionally: "anything you did not
 create serves TLS". That is true of a managed cloud database and false of the
-perfectly ordinary case `reference` exists for: a Postgres somebody else
+perfectly ordinary case `reference` exists for, a Postgres somebody else
 operates in your cluster. Against one, the app crashloops on boot:
 
 ```
@@ -130,10 +127,10 @@ still defaulting to `true` for anything but the bundled Postgres.
 ### An Ingress with no class is claimed by nobody
 
 `ingressClassName` had no default, so the Ingress carried no class. A cluster
-with a default `IngressClass` picks it up; a cluster with two controllers and no
-default ignores it — and the second is normal. Tested against a cluster running
-both Traefik (k3s ships it) and nginx: the Ingress applied without complaint and
-404ed every request.
+with a default `IngressClass` picks it up; a cluster with two controllers and
+no default ignores it, and the second case is normal. Tested against a cluster
+running both Traefik (k3s ships it) and nginx: the Ingress applied without
+complaint and 404ed every request.
 
 That is the same shape as the other refusals, so it is one now:
 
@@ -147,12 +144,12 @@ cleanly either way.
 
 `proxy-read-timeout: 3600` only emitted when `scheme=https`. fountain streams a
 conversation over SSE and holds the connection open for up to 60s between
-events; nginx's own default read timeout is also 60s, so a plain-http ingress cut
-long streams at exactly the boundary where they are most likely to be waiting.
-The scheme has nothing to do with how long a stream lives, so it is unconditional
-now.
+events; nginx's own default read timeout is also 60s, so a plain-http ingress
+cut long streams at exactly the boundary where they are most likely to be
+waiting. The scheme has nothing to do with how long a stream lives, so it is
+unconditional now.
 
-`force-ssl-redirect` really is https-only — forcing a redirect to a scheme
+`force-ssl-redirect` really is https-only: forcing a redirect to a scheme
 nothing terminates is a loop.
 
 
@@ -161,22 +158,23 @@ nothing terminates is a loop.
 `target` answers **which cluster**, not **what kind of thing runs this**. Decided
 in [#25](https://github.com/INTENTIUS/fountain-ops/issues/25).
 
-A managed cluster — EKS, GKE, AKS — is `target=kubernetes` with different seam
+A managed cluster (EKS, GKE, AKS) is `target=kubernetes` with different seam
 defaults: a cloud LoadBalancer, cloud DNS, a managed Postgres behind
 `postgres=reference`. Not a new value.
 
 Anything without a Kubernetes API is **not** a third value either. Every
 resource module here emits `K8s::*`, and a Task Definition is not a Deployment
-with different field names — the unit of scheduling, the health check contract,
-the service discovery mechanism and the secret injection path are all different
-shapes. Adding an enum value would advertise a config change and mean a rewrite.
+with different field names: the unit of scheduling, the health check contract,
+the service discovery mechanism and the secret injection path are all
+different shapes. Adding an enum value would advertise a config change and
+mean a rewrite.
 
 chant is not the constraint; it ships `aws`, `fly`, `gcp` and `azure` lexicons.
 This repo's emitters are.
 
 ### What does generalise
 
-The seam model, and this is the interesting part:
+The seam model:
 
 | seam | on a non-Kubernetes runtime |
 |---|---|
@@ -188,12 +186,12 @@ The seam model, and this is the interesting part:
 | `dataPlane` | **unchanged** |
 | `storage` | **unchanged** |
 
-The last two do not change because an HTTP API and an S3 bucket do not care what
-schedules the caller. That is why the axes were right and only the emitters are
+The last two do not change because an HTTP API and an S3 bucket do not care
+what schedules the caller. The axes were right; only the emitters are
 Kubernetes-shaped.
 
 If a second emitter tree ever lands ([#54](https://github.com/INTENTIUS/fountain-ops/issues/54),
 [#55](https://github.com/INTENTIUS/fountain-ops/issues/55)), `target` is the
-wrong name for what selects between them — the honest move is a new axis above
-it rather than stretching this one. Said here so the decision is falsifiable
-rather than permanent.
+wrong name for what selects between them; the honest move is a new axis above
+it rather than stretching this one. It is written down here so there is
+something to hold that decision to.

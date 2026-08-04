@@ -106,8 +106,10 @@ export const e2e = new Job({
     // database, that a re-run does not rotate the master key, that the app
     // starts without crashing first, that the backup restores and matches
     // live, that the account path works headlessly, that the conversation
-    // gate fails for the documented reason and not another one, and that a
-    // real API server accepts every seam. Then it tears down.
+    // gate's outcome matches the path it took — reattach implies an orphaned
+    // turn, no reattach implies a completed one, and which you get is a race
+    // (#67) — and that a real API server accepts every seam. Then it tears
+    // down.
     new Step({ name: "Stand it up and assert every claim", run: "just e2e" }),
     // Logs beat a red X with no context, and only when it failed.
     new Step({

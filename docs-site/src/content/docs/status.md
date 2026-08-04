@@ -16,7 +16,7 @@ about.
 | `target=k3d`, `tier=light` | Stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | 23 tables, app connects |
 | Registering and signing in | Registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
-| Promoting an admin | `just promote-admin` grants the role through upstream's first-admin bootstrap (`promote_admin/1`, in the pin since `v0.4.0`; [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) tracked waiting for it), audit-recorded as `admin.role.granted`. The grant is e2e-asserted; the admin pages themselves have not been driven by anything here |
+| Promoting an admin | `just promote-admin` grants the role through upstream's first-admin bootstrap (`promote_admin/1`), audit-recorded as `admin.role.granted`. The grant is e2e-asserted; the admin pages themselves have not been driven by anything here |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated with the fountain skill and a `/home/sprite/.env` written into its filesystem |
 | `pg-dump` → floci | **Taken and restored.** The CronJob dumps, uploads and size-verifies; `just restore-drill` restores the newest object into a throwaway database, matches its table count against live, and drops it. Non-destructive: the live database is untouched and only `fountain` remains afterwards |
 | `target=kubernetes` on k3d | **Applied and served.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. Not yet applied to a **managed** cluster ([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)) |
@@ -41,14 +41,11 @@ about.
 
 ## Why the table reads like this
 
-Three claims in this repo's docs have been tested and found false, twice by
-building the thing rather than reading it: "nothing reads `process.env`", "any
-tier runs on any target", and "add `postgres=cnpg` and `k3d + ha` builds". The
-last one was true when it was written and was quietly falsified by a later
-seam. So the specific claims here are asserted in tests where they can be, and
-this page prefers **Builds only** to a word that sounds better. The backup row
-in particular says "taken and restored" only because a restore has actually
-run; an unrestored backup is a hypothesis.
+A documented claim rots the moment nothing re-checks it. So the specific
+claims here are asserted in tests where they can be, and this page prefers
+**Builds only** to a word that sounds better. The backup row in particular
+says "taken and restored" only because a restore has actually run; an
+unrestored backup is a hypothesis.
 
 Most of the **Verified** table is re-asserted on every push, not just true at
 the time it was written. `just e2e`, which is the whole of CI's e2e job and

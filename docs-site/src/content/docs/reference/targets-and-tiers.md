@@ -15,27 +15,19 @@ questions, so a tier does not imply a target or the reverse.
 A tier scales the deployment; it never changes what fountain can do. `light` is
 not a cut-down fountain, it is a smaller one.
 
-## There used to be three
+## Size is not a tier
 
-`standard` sat between them and emitted a deployment identical to `light`: same
-kinds, same replica count, the same absence of clustering. The only differences
-were resource requests and backup retention.
-
-A bigger single pod is not a more durable one. It survives exactly the same
-set of failures, which is none of them, so the middle rung held nothing.
-Someone picking it believed they had bought durability between `light` and
-`ha`, when what they had bought was RAM.
-
-Sizing is now its own parameter, which is what it always was:
+A bigger single pod is not a more durable one; it survives exactly the same
+set of failures. So sizing is its own parameter rather than a rung between
+`light` and `ha`:
 
 ```bash
-just params="--param size=medium" up                          # what `standard` asked for
 just params="--param tier=light --param size=large" up
 ```
 
-`size` defaults to what each tier already carried, so nothing shrank. A test
-asserts every tier differs from every other in *shape*, not only in size; if
-that fails, the ladder has grown an empty rung again.
+`size` defaults to `small` at `light` and `large` at `ha`. A test asserts
+every tier differs from every other in *shape*, not only in size, so a tier
+that buys nothing but RAM cannot appear.
 
 ## The PodDisruptionBudget
 
@@ -72,13 +64,9 @@ npx chant build src --param target=k3d --param tier=ha \
   --param postgres=cnpg --param dataPlane=sprites
 ```
 
-:::note[This claim is a test]
-The README once said "any tier runs on any target", which was tested and found
-false. It then said "add `postgres=cnpg` and it builds", which was true until the
-data plane seam landed and quietly made it false. Both are now asserted in
-`test/tiers-and-seams.test.ts`, so the next one to rot fails a build rather than
-misleading a reader.
-:::
+Which combinations build and which are refused is asserted in
+`test/tiers-and-seams.test.ts`, so if a seam change shifts the answer, a build
+fails rather than this page going quietly wrong.
 
 ## Replicas and clustering are one decision
 

@@ -77,12 +77,6 @@ unreachable data plane and a migration that did not run. Which way the turn
 went is printed, never asserted.
 :::
 
-Until this existed the e2e assertions lived only in `ci/pipeline.ts` as
-workflow steps, so answering "do the documented claims still hold on my
-machine?" meant reading the pipeline and transcribing it by hand. Three of the
-gates above (the backup restore, the conversation gate and the account path)
-were not in CI at all, so nothing re-ran them once they had passed.
-
 Actions are pinned by commit SHA, tools by release version. A tag is a moving
 pointer, and whoever controls it controls what runs here.
 

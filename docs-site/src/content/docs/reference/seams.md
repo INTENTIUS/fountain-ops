@@ -32,11 +32,10 @@ bucket, so the backup job runs its real dump → upload → verify → prune pat
 against an emulated store instead of being the part nobody exercises until a
 restore.
 
-`backupS3Endpoint` used to default to `http://localhost:4566`, matching a floci
-on your laptop. From inside a pod `localhost` is the pod, so that endpoint
-could never reach it; the upload container was talking to itself. In the
-cluster the address is a Service name that resolves from where the job
-actually runs.
+`backupS3Endpoint` defaults to floci's in-cluster Service name, which resolves
+from where the job actually runs. Mind that if you override it: from inside a
+pod `localhost` is the pod, so a laptop-style `localhost:4566` endpoint leaves
+the upload container talking to itself.
 
 ## What is refused
 

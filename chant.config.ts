@@ -162,7 +162,7 @@ export default {
     // `reference` means "it already exists, here is how to reach it".
     // `omit` means "this deployment does not have one".
     postgres: { type: "string", enum: ["reference", "bundled", "cnpg"], required: false },
-    secrets: { type: "string", enum: ["reference", "infisical"], required: false },
+    secrets: { type: "string", enum: ["reference", "sops", "infisical"], required: false },
     ingress: { type: "string", enum: ["omit", "ingress", "traefik"], required: false },
     tls: { type: "string", enum: ["omit", "cert-manager"], required: false },
     backups: { type: "string", enum: ["omit", "pg-dump", "barman-pitr"], required: false },

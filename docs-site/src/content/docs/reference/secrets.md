@@ -20,6 +20,52 @@ secret fountain-secrets already exists — leaving it alone
 CI asserts that: it stands the deployment up, re-runs `just up`, and compares
 `MASTER_SECRETS_KEY` byte for byte.
 
+## Where they come from — the `secrets` seam
+
+| mode | source of truth |
+|---|---|
+| `reference` | the cluster. Something put a Secret there; this repo reads it by name and says nothing about how it arrived |
+| `sops` | **this repo**, as ciphertext. Values live in `secrets/platform.enc.yaml`, reviewable in a diff, decrypted into the cluster by `just secrets-sync` |
+| `infisical` | an Infisical server, materialised into a Secret by its operator |
+
+`sops` is the one that answers "where do local secrets come from" without a
+cloud account. The alternative it replaces is `just secret` minting values on
+the spot — fine for one laptop, and not a story you can carry to a second
+machine or a second operator.
+
+```bash
+cp secrets/platform.example.yaml secrets/platform.enc.yaml
+$EDITOR secrets/platform.enc.yaml
+sops --encrypt --in-place secrets/platform.enc.yaml
+just secrets-sync
+```
+
+What a reviewer sees after that — keys readable, values not:
+
+```yaml
+SECRET_KEY_BASE: ENC[AES256_GCM,data:kvni3qRN1jYDM/BFUnxzImnlTe7z...
+MASTER_SECRETS_KEY: ENC[AES256_GCM,data:ZHnk2obDBchEEI//fNH1aFAnl...
+```
+
+Nothing decrypted is ever written to disk: sops streams to stdout and kubectl
+reads it, so a decrypted file cannot be left behind because one is never
+created.
+
+:::note[Two things that will bite]
+**`POSTGRES_PASSWORD` and `DATABASE_URL` must agree, and nothing checks it.**
+`just secret` generates them together so they cannot disagree; here they are
+yours to keep in step, and a mismatch is a password-authentication failure at
+boot that reads like a bad credential rather than two credentials that were
+never the same one.
+
+**sops looks for age keys in a different place per platform** —
+`~/Library/Application Support/sops/age/keys.txt` on macOS,
+`~/.config/sops/age/keys.txt` elsewhere. `age-keygen -o` and most instructions
+write the second, so on a Mac the key exists, is correct, and is not found. The
+error is `identity did not match any of the recipients`, which reads like the
+wrong key rather than the wrong directory. `just secrets-sync` checks both.
+:::
+
 ## Two layers, and only one of them is this repo's
 
 **Platform secrets** — `MASTER_SECRETS_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL`,

@@ -10,7 +10,7 @@ alone.
 | Seam | Modes |
 |---|---|
 | `postgres` | `bundled` · `reference` · `cnpg` |
-| `secrets` | `reference` · `infisical` |
+| `secrets` | `reference` · `sops` · `infisical` |
 | `ingress` | `omit` · `ingress` · `traefik` |
 | `tls` | `omit` · `cert-manager` |
 | `backups` | `omit` · `pg-dump` · `barman-pitr` |

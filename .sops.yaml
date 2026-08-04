@@ -1,0 +1,19 @@
+# How SOPS encrypts this repo's platform secrets.
+#
+# `creation_rules` decide which key encrypts a new file and which values inside
+# it get encrypted. `encrypted_regex` is the important line: keys stay in
+# plaintext so a diff shows which secret changed, and only values are
+# ciphertext.
+#
+# The age recipients below are public keys. They are meant to be committed —
+# anyone can encrypt to them, only a holder of the matching private key can
+# decrypt. Add a recipient per operator who should be able to run
+# `just secrets-sync`, and re-encrypt with `sops updatekeys`.
+#
+# Replace the placeholder before using this. `age-keygen` prints a keypair;
+# the public half goes here, the private half goes in
+# ~/.config/sops/age/keys.txt and never in this repo.
+creation_rules:
+  - path_regex: secrets/.*\.enc\.ya?ml$
+    encrypted_regex: "^(SECRET_KEY_BASE|MASTER_SECRETS_KEY|DATABASE_URL|POSTGRES_PASSWORD|SPRITES_TOKEN|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|GITHUB_CLIENT_SECRET|STRIPE_SECRET_KEY|RESEND_API_KEY)$"
+    age: age1REPLACE-WITH-YOUR-PUBLIC-KEY

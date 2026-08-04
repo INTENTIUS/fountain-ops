@@ -6,3 +6,14 @@ skills/
 # Built by `just site`; the Pages workflow publishes it and nothing commits it.
 docs-site/dist/
 docs-site/.astro/
+
+# SOPS decrypts into these; never commit a decrypted copy.
+secrets/*.dec.yaml
+secrets/platform.yaml
+
+# Your encrypted secrets are yours. In a deployment of your own you SHOULD
+# commit this — ciphertext in git is the point of the sops mode, and the diff
+# is how a review sees which secret changed. It is ignored here because this
+# repo is the template rather than a deployment, and shipping one operator's
+# file encrypted to one operator's key helps nobody.
+secrets/platform.enc.yaml

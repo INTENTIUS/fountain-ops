@@ -9,6 +9,35 @@ Register at `http://localhost:4000/auth/register`, then:
 just verify-email you@example.com
 ```
 
+## Without a browser
+
+`POST /api/auth/register` does the same thing, which is what a script, a CI step
+or an agent needs — the browser form is the only route the rest of this page
+describes, and it is not the only one there is.
+
+```bash
+curl -sX POST http://localhost:4000/api/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"..."}'
+
+{"message":"Check your email to verify your account.","user_id":"60e3c0e6-..."}
+```
+
+`just verify-email` then works exactly as above, and an API key comes from the
+same shape of call:
+
+```bash
+curl -sX POST http://localhost:4000/api/auth/token \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"..."}'
+
+{"prefix":"ftn_75cd","key_id":"39a7161a-...","api_key":"ftn_75cda1c2..."}
+```
+
+That key is what [the conversation gate](/fountain-ops/reference/data-plane/)
+authenticates with, so the whole path from nothing to a running conversation is
+reachable without opening a browser once.
+
 ## Why this step exists
 
 This deployment sends no mail. `emailDelivery` defaults to `none`, because

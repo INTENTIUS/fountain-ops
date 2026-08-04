@@ -32,7 +32,7 @@ Then `just forward` and open `http://localhost:4000`. `just down` removes everyt
 
 ### First login
 
-A deploy that serves `/health` is not yet an instance you can use. Register at `/auth/register`, then:
+A deploy that serves `/health` is not yet an instance you can use. Register at `/auth/register` — or `POST /api/auth/register`, if you are not driving a browser — then:
 
 ```bash
 just verify-email you@example.com

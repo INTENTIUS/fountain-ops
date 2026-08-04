@@ -15,6 +15,7 @@ Stood up and exercised, not reasoned about.
 | `target=k3d`, `tier=light` | Stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | 23 tables, app connects |
 | Registering and signing in | Registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
+| Promoting an admin | `just promote-admin` grants the role through upstream's first-admin bootstrap (`promote_admin/1`, in the pin since `v0.4.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) tracked waiting for it), audit-recorded as `admin.role.granted`. The grant is e2e-asserted; the admin pages themselves have not been driven by anything here |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated — the fountain skill and a `/home/sprite/.env` written into its filesystem |
 | `pg-dump` → floci | **Taken and restored.** The CronJob dumps, uploads and size-verifies; `just restore-drill` restores the newest object into a throwaway database, matches its table count against live, and drops it. Non-destructive — the live database is untouched and only `fountain` remains afterwards |
 | `target=kubernetes` on k3d | **Applied and served.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. Not yet applied to a **managed** cluster — [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
@@ -26,7 +27,6 @@ Stood up and exercised, not reasoned about.
 | | |
 |---|---|
 | Completing a turn | **Sometimes, and it is a race.** If the sandbox reaches `ready` before fountain dispatches, it takes the reattach path, whose `list_sessions` call spritzer answers `426`, and the turn is orphaned ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the turn completes. A faster machine loses more often: 5 of 5 orphaned on a laptop, 2 of 2 completed on a CI runner — [#67](https://github.com/INTENTIUS/fountain-ops/issues/67). A completed turn is still only spritzer echoing the command back, never a model |
-| Admin | `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 
 ## Builds, unexercised
 

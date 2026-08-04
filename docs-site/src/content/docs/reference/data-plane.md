@@ -28,7 +28,7 @@ sprite `running` with both files present.
 
 Whether a turn completes is decided by which branch fountain takes, and that is
 a race rather than a property of the deployment. From
-`conversation_server.ex` in the pinned `v0.3.0`:
+`conversation_server.ex` in the pinned `v0.4.0`:
 
 ```elixir
 case sandbox.status do

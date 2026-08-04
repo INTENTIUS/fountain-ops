@@ -492,10 +492,18 @@ e2e:
     just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
     echo "  ✓ registered and verified $email"
 
+    # The first-admin bootstrap, which was unreachable on v0.3.0 (#31): the
+    # release task landed upstream after that tag. Asserting the grant, not
+    # the admin pages — driving those needs a browser session this target
+    # does not have.
+    step "the first-admin bootstrap"
+    just promote-admin "$email" | grep -q "is an admin" || fail "promote-admin did not grant the role"
+    echo "  ✓ $email granted admin, audit-recorded"
+
     # The conversation gate, asserted as the pairing rather than a result.
     #
     # Both outcomes below are legitimate and which one you get is a race, not a
-    # property of the deployment. fountain v0.3.0, dispatch_provision/7:
+    # property of the deployment. fountain v0.4.0, dispatch_provision/7:
     #
     #   case sandbox.status do
     #     "ready"                        -> reattach(...)
@@ -581,11 +589,13 @@ verify-email EMAIL: _require-cluster
 
     # A separate pod, not `kubectl exec` into the running one.
     #
-    # Release.verify_email/1 calls ensure_all_started, which boots the whole
-    # application — including the metrics endpoint on 9568. Inside the pod
-    # that is already serving, that port is taken, so the documented
-    # `bin/fountain_server eval` crashes with :eaddrinuse before it reaches
-    # the database. In its own pod the ports are free.
+    # On v0.3.0 this was forced: Release tasks booted the whole application —
+    # including the metrics endpoint on 9568, already bound in the pod that is
+    # serving — so the documented `bin/fountain_server eval` died with
+    # :eaddrinuse before it reached the database. v0.4.0 starts only the Repo
+    # for these tasks (fountain#256), so exec would work now. The separate pod
+    # stays: it leaves the serving pod alone, and a pod that runs and exits is
+    # a cleaner unit than a shell inside one that must keep serving.
     #
     # The spec is lifted from the live Deployment rather than restated here,
     # so the eval gets exactly the env the app runs with — the same Secret,
@@ -623,6 +633,68 @@ verify-email EMAIL: _require-cluster
 
     echo "$out" >&2
     echo "  ✗ could not verify $EMAIL (kubectl exit $rc)" >&2
+    exit 1
+
+# Grant an account the admin role, so /admin stops bouncing it to /dashboard.
+#
+# Upstream's first-admin bootstrap (fountain#275, in the pin since v0.4.0 —
+# #31 tracked waiting for it). Before it, both upstream deploy guides ended in
+# raw SQL against the production database. The grant is audit-recorded as
+# `admin.role.granted` with a nil actor, so a promotion made this way is as
+# visible in the admin audit trail as one made from the panel. Revoking has no
+# release task on purpose — that is done from the panel, by an admin.
+#
+# Needs a registered account: register first, `just verify-email` to make it
+# usable, then this.
+[doc("Grant an account the admin role, audit-recorded.")]
+promote-admin EMAIL: _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    EMAIL="{{EMAIL}}"
+    if ! printf '%s' "$EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+      echo "  ✗ not an email address: $EMAIL" >&2
+      exit 2
+    fi
+
+    # The same pod shape as verify-email above, for the reasons its comment
+    # gives: a separate pod, spec lifted from the live Deployment so the eval
+    # cannot drift from the env the app runs with.
+    spec="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -c --arg e "$EMAIL" '
+      .spec.template.spec
+      | .restartPolicy = "Never"
+      | .containers |= [ .[0]
+          | .name = "eval"
+          | .command = ["/app/bin/fountain_server", "eval", "Fountain.Release.promote_admin(\"\($e)\")"]
+          | del(.args, .livenessProbe, .readinessProbe, .startupProbe, .ports)
+        ]')"
+
+    set +e
+    out="$(kubectl run "fountain-promote-admin-$$" --rm -i --restart=Never -n "{{ns}}" \
+      --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
+    rc=$?
+    set -e
+
+    # Same contract as verify-email: the eval reports a missing account with
+    # an error tuple that sets no exit code, so the printed line decides.
+    if printf '%s' "$out" | grep -q "Granted admin to"; then
+      echo "  ✓ $EMAIL is an admin — /admin answers for it now"
+      exit 0
+    fi
+
+    if printf '%s' "$out" | grep -q "is already an admin"; then
+      echo "  ✓ $EMAIL was already an admin"
+      exit 0
+    fi
+
+    if printf '%s' "$out" | grep -q "No account found"; then
+      echo "  ✗ no account for $EMAIL" >&2
+      echo "    Register it first: just forward, then http://localhost:4000/auth/register" >&2
+      exit 1
+    fi
+
+    echo "$out" >&2
+    echo "  ✗ could not promote $EMAIL (kubectl exit $rc)" >&2
     exit 1
 
 # ── the conversation gate ──────────────────────────────────────────────────

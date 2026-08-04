@@ -49,6 +49,7 @@ Stands up from nothing and asserts, in order:
 | a clean start | the app's `restartCount` is 0, so the Postgres wait has not regressed |
 | the backup | taken, then restored into a throwaway and table-matched against live |
 | the account path | register over the API, `verify-email`, headless throughout |
+| the first-admin bootstrap | `promote-admin` grants the role, audit-recorded |
 | the conversation gate | a sandbox is provisioned and a turn starts |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 

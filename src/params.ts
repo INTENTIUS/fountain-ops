@@ -17,7 +17,7 @@ import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } 
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
-export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.3.0";
+export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.4.0";
 
 /**
  * The externally-visible authority, port included where there is one.
@@ -94,12 +94,15 @@ export const emailDelivery = (params.emailDelivery as string | undefined) ?? "no
 /**
  * Trace export, off by default.
  *
- * fountain's runtime config hardcodes `traces_exporter: :otlp` and defaults the
- * endpoint to api.honeycomb.io, so an instance that has never heard of
- * Honeycomb retries a 401 against it every five seconds for the life of the
- * pod — twelve lines a minute in `just logs`, saying "error" and "401". That is
- * the target the README sends you to when something is wrong, so the real
- * signal was underneath a vendor error nobody could act on.
+ * On v0.3.0 this was a load-bearing workaround: the runtime config hardcoded
+ * `traces_exporter: :otlp` with api.honeycomb.io as the default endpoint, so
+ * an instance that had never heard of Honeycomb retried a 401 against it every
+ * five seconds for the life of the pod — twelve lines a minute in `just logs`,
+ * on top of whatever signal someone was actually there for. v0.4.0 fixed that
+ * upstream (BinaryBourbon/fountain#317): export is off unless an export target
+ * is configured. So this is now an explicit statement of the same default,
+ * kept because "off" being visible in the pod spec is worth one line — and
+ * because the param is how an operator switches it on.
  *
  * "otlp" hands it back to the standard OTEL_EXPORTER_OTLP_* variables, which
  * are the operator's to supply; this repo does not model them.

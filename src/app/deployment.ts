@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, pgImage, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -60,6 +60,89 @@ const databaseUrl =
     ? { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: "fountain-pg-app", key: "uri" } } }
     : { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: secretName, key: "DATABASE_URL" } } };
 
+/**
+ * Wait for the bundled Postgres before starting the app.
+ *
+ * Both Deployments are applied in the same `kubectl apply`, so without this the
+ * app races a database that is still pulling its image. fountain migrates at
+ * boot, before the endpoint listens; the migration cannot get a connection,
+ * raises, and the release exits 1. Kubernetes restarts it and the third attempt
+ * wins — so `just up` goes green while `kubectl get pods` shows RESTARTS 2 and
+ * `just logs` shows an Ecto stacktrace on a deployment that is actually fine.
+ *
+ * The probe split below does not help: the process exits before any probe is
+ * consulted, and `kubectl rollout status` reads the end state without caring
+ * how many attempts it took to get there.
+ *
+ * Only for `bundled`, and the other two are not oversights:
+ *
+ *   cnpg       the app reads its URL from `fountain-pg-app`, a Secret the
+ *              operator creates when it bootstraps the cluster. Until then the
+ *              pod cannot start at all — it sits in CreateContainerConfigError
+ *              and retries, which is already a wait, and one that reports the
+ *              missing thing by name.
+ *   reference  the database is somebody else's and presumed up. There is
+ *              nothing to probe either: the host is inside DATABASE_URL, which
+ *              is a Secret and not a build-time value.
+ */
+const waitForPostgres =
+  seams.postgres === "bundled"
+    ? [
+        new Container({
+          name: "wait-for-postgres",
+          // The image the bundled Postgres already pulls, so this costs no
+          // extra pull — and pg_isready is the tool that ships in it.
+          image: pgImage,
+          imagePullPolicy: "IfNotPresent",
+          command: ["/bin/sh", "-c"],
+          // `-U fountain` is load-bearing and not a stylistic echo of the
+          // database's own probe. With no -U, libpq falls back to the OS
+          // user's name, and this runs as uid 1001, which has no /etc/passwd
+          // entry in the postgres image. pg_isready cannot resolve a name,
+          // makes no attempt, and exits 3 — "no attempt", not "not ready" —
+          // for a database that is up and accepting connections.
+          //
+          // The failure that costs you an afternoon: it looks exactly like a
+          // database that never came up, and the wait then burns its full
+          // timeout and fails the pod, which is worse than the crashloop this
+          // replaced. Verified against a live cluster both ways.
+          args: [
+            `set -eu
+for i in $(seq 1 180); do
+  if pg_isready -q -U fountain -h fountain-postgres -p 5432; then
+    echo "postgres is accepting connections"
+    exit 0
+  fi
+  sleep 1
+done
+echo "postgres did not accept connections within 180s" >&2
+echo "check:  kubectl logs -n ${namespace} deployment/fountain-postgres" >&2
+exit 1`,
+          ],
+          // This is correct and complete, and `chant build` reports it as
+          // missing anyway: the k8s post-synth check does not read
+          // initContainers[].securityContext, so the warnings it prints for
+          // this container are identical whether this block is here or
+          // deleted. Verified by deleting it. INTENTIUS/chant#1482.
+          //
+          // Do not "fix" the warning by removing this. The emitted YAML is
+          // right; the checker is looking in the wrong place, and the advice
+          // it gives — "set it at container or pod level" — is unsatisfiable
+          // for capabilities, which has no pod-level form.
+          securityContext: {
+            runAsNonRoot: true,
+            runAsUser: 1001,
+            readOnlyRootFilesystem: true,
+            allowPrivilegeEscalation: false,
+            capabilities: { drop: ["ALL"] },
+          },
+          // No CPU limit: this sleeps in a loop, and throttling a readiness
+          // wait only makes the thing it is waiting on look slower.
+          resources: { requests: { cpu: "10m", memory: "32Mi" }, limits: { memory: "64Mi" } },
+        }),
+      ]
+    : [];
+
 export const deployment = new Deployment({
   metadata: { name: "fountain", namespace, labels },
   spec: {
@@ -69,6 +152,7 @@ export const deployment = new Deployment({
     template: {
       metadata: { labels },
       spec: {
+        initContainers: waitForPostgres,
         containers: [
           new Container({
             name: "fountain",

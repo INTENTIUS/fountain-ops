@@ -49,22 +49,31 @@ Stands up from nothing and asserts, in order:
 | a clean start | the app's `restartCount` is 0, so the Postgres wait has not regressed |
 | the backup | taken, then restored into a throwaway and table-matched against live |
 | the account path | register over the API, `verify-email`, headless throughout |
-| the conversation gate | fails, **for the documented reason** |
+| the conversation gate | a sandbox is provisioned and a turn starts |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 
 Then it tears down. On failure it leaves the cluster up so there is something
 to look at; CI runs its own teardown regardless.
 
-:::note[One assertion is pinned to a failure]
-The conversation gate does not pass today — fountain's reattach calls exec over
-plain HTTP and spritzer answers `426`, so the turn is orphaned
-([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)).
+:::caution[The conversation gate's outcome depends on the CPU]
+This was going to pin the documented failure and fail loudly if the gate ever
+started passing. It cannot, because the two do not agree:
 
-`just e2e` asserts that specific failure rather than asserting "it fails",
-which would go green for any breakage at all. It also fails when the gate
-*starts passing* — deliberately, because that means #18 has landed and the
-status page needs rewriting, and a silent flip to green is how that goes
-unnoticed for a month.
+| | |
+|---|---|
+| **arm64** | turn orphaned, 5 runs of 5; spritzer logs `Connection header "" does not contain Upgrade` each time |
+| **amd64** | the turn completes and streams output, on a GitHub runner |
+
+Same multi-arch image tags on both sides, so
+[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is not simply
+"open" — it reproduces on one architecture.
+[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) is where that gets
+resolved.
+
+`just e2e` therefore asserts only the part that holds on both: a sandbox is
+provisioned and a turn starts. That still catches a broken Secret, an
+unreachable data plane and a migration that did not run. Which way the turn
+went is printed, never asserted.
 :::
 
 Until this existed the e2e assertions lived only in `ci/pipeline.ts` as

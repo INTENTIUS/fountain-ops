@@ -492,25 +492,42 @@ e2e:
     just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
     echo "  ✓ registered and verified $email"
 
-    # The conversation gate, pinned to the state it is actually in.
+    # The conversation gate, asserted as far as it is architecture-stable.
     #
-    # This asserts a FAILURE, deliberately. fountain's reattach calls exec over
-    # plain HTTP and spritzer answers 426, so the turn is orphaned — spritzer#18.
-    # Asserting "it fails" would pass for any breakage at all, so this asserts
-    # the specific documented reason. When #18 lands, this flips to a pass and
-    # the assertion below fails loudly, which is how anyone finds out that the
-    # status page needs rewriting.
-    step "the conversation gate, at its documented failure"
+    # This wanted to pin the documented failure — fountain's reattach calls
+    # exec over plain HTTP, spritzer answers 426, the turn is orphaned
+    # (spritzer#18) — and fail loudly when it started passing, so nobody had to
+    # notice on their own that the status page had gone stale.
+    #
+    # It cannot, because the outcome depends on the CPU:
+    #
+    #   arm64   orphaned, 5 runs out of 5. spritzer logs "Connection header
+    #           \"\" does not contain Upgrade" for each one.
+    #   amd64   the turn completes and streams output, on a GitHub runner.
+    #
+    # Same multi-arch tags on both. So pinning either outcome would go red on
+    # half the machines that run it, and that is #67 to resolve rather than
+    # something to encode here.
+    #
+    # What is asserted is the part that holds on both: the sandbox is
+    # provisioned and a turn is started. That still catches a broken Secret, an
+    # unreachable data plane and a migration that did not run, which is what
+    # this gate is for. Which way it went is printed, never asserted.
+    step "the conversation gate, as far as it is architecture-stable"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
+    printf '%s' "$out" | grep -q '"stage":"provision"\|provision' \
+      || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
+    printf '%s' "$out" | grep -q '"stage":"turn"\|turn' \
+      || { echo "$out" | tail -20; fail "no turn stage — nothing ran in the sandbox"; }
     if printf '%s' "$out" | grep -q "plumbing: sandbox provisioned"; then
-      echo "$out" | tail -5
-      fail "the conversation gate PASSED. That is good news and this assertion is now wrong — spritzer#18 has landed. Update the status page and this step."
+      echo "  ✓ provisioned, and the turn completed ($(uname -m))"
+    elif printf '%s' "$out" | grep -q "turn_orphaned"; then
+      echo "  ✓ provisioned; turn orphaned as spritzer#18 describes ($(uname -m))"
+    else
+      echo "$out" | tail -20
+      fail "the gate failed in a way that is neither outcome — provisioning reached, then something new"
     fi
-    printf '%s' "$out" | grep -q "provision" || fail "no provision stage — the sandbox was never requested, which is a different break from spritzer#18"
-    printf '%s' "$out" | grep -q "turn_orphaned" \
-      || { echo "$out" | tail -20; fail "the gate failed for a reason other than the documented orphaned turn"; }
-    echo "  ✓ provisioned, then orphaned the turn exactly as spritzer#18 describes"
 
     # Every seam that needs a CRD, against a real API server rather than
     # against our own expectations. No controllers, so nothing reconciles.

@@ -24,22 +24,54 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## The turn does not finish
+## The turn finishes, or does not, depending on a race
 
-After provisioning, fountain reattaches to any existing runtime session, and
-that call asks spritzer's exec path over plain HTTP. spritzer serves it as a
-WebSocket only, so it answers `426` and the turn is abandoned:
+Whether a turn completes is decided by which branch fountain takes, and that is
+a race rather than a property of the deployment. From
+`conversation_server.ex` in the pinned `v0.3.0`:
+
+```elixir
+case sandbox.status do
+  "ready"                             -> reattach(...)
+  s when s in ["pending", "starting"] -> fresh_provision(...)
+end
+```
+
+If provisioning marks the sandbox `ready` before the ConversationServer
+dispatches, fountain reattaches — and reattach calls `list_sessions` over plain
+HTTP, which spritzer serves as a WebSocket only. It answers `426` and the turn
+is abandoned:
 
 ```
 event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
 ```
 
-Reproducible on every conversation, including straight after a fresh rollout.
-Filed as [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) — it is
-one endpoint, and everything on either side of it already works.
+If dispatch gets there first, the sandbox is still `pending`, fountain
+provisions fresh, and the turn runs to `exit_code: 0`.
 
-So today the emulated data plane proves the substrate can provision and address
-a sandbox, and nothing beyond that.
+:::caution[A faster machine is more likely to fail]
+Whoever wins that race is decided by speed, so this gets *more* likely on
+better hardware. Measured with identical image digests on both sides:
+
+| | |
+|---|---|
+| M-series laptop | reattach taken, turn orphaned — **5 of 5** |
+| GitHub runner | no reattach, turn completed — **2 of 2** |
+
+Consistent on either machine, which is why it reads as deterministic until you
+try the other one.
+[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the full probe.
+:::
+
+[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is the `426`
+itself, and it is a real bug — it would break the legitimate reattach the
+branch was written for, after a BEAM restart. It is not the reason a *first*
+turn fails. That a fresh conversation reaches the reattach branch at all is the
+upstream problem.
+
+So the emulated data plane proves the substrate can provision and address a
+sandbox. When the turn does complete, what completed is spritzer echoing the
+command back — see below.
 
 ## What it will never prove
 

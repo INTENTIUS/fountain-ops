@@ -25,7 +25,7 @@ Stood up and exercised, not reasoned about.
 
 | | |
 |---|---|
-| Completing a turn | The turn starts and is orphaned. fountain's reattach calls exec over plain HTTP; spritzer answers `426` — [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) |
+| Completing a turn | **Sometimes, and it is a race.** If the sandbox reaches `ready` before fountain dispatches, it takes the reattach path, whose `list_sessions` call spritzer answers `426`, and the turn is orphaned ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the turn completes. A faster machine loses more often: 5 of 5 orphaned on a laptop, 2 of 2 completed on a CI runner — [#67](https://github.com/INTENTIUS/fountain-ops/issues/67). A completed turn is still only spritzer echoing the command back, never a model |
 | Admin | `promote_admin/1` is not in the pinned `v0.3.0` — [#31](https://github.com/INTENTIUS/fountain-ops/issues/31) |
 
 ## Builds, unexercised

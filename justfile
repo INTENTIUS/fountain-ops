@@ -492,41 +492,43 @@ e2e:
     just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
     echo "  ✓ registered and verified $email"
 
-    # The conversation gate, asserted as far as it is architecture-stable.
+    # The conversation gate, asserted as the pairing rather than a result.
     #
-    # This wanted to pin the documented failure — fountain's reattach calls
-    # exec over plain HTTP, spritzer answers 426, the turn is orphaned
-    # (spritzer#18) — and fail loudly when it started passing, so nobody had to
-    # notice on their own that the status page had gone stale.
+    # Both outcomes below are legitimate and which one you get is a race, not a
+    # property of the deployment. fountain v0.3.0, dispatch_provision/7:
     #
-    # It cannot, because the outcome depends on the CPU:
+    #   case sandbox.status do
+    #     "ready"                        -> reattach(...)
+    #     s when s in ["pending", ...]   -> fresh_provision(...)
     #
-    #   arm64   orphaned, 5 runs out of 5. spritzer logs "Connection header
-    #           \"\" does not contain Upgrade" for each one.
-    #   amd64   the turn completes and streams output, on a GitHub runner.
+    # If provisioning marks the sandbox `ready` before the ConversationServer
+    # dispatches, it takes the reattach path — and reattach calls list_sessions,
+    # which spritzer answers 426 (spritzer#18), orphaning the turn. If dispatch
+    # gets there first, it provisions fresh and the turn runs to exit 0.
     #
-    # Same multi-arch tags on both. So pinning either outcome would go red on
-    # half the machines that run it, and that is #67 to resolve rather than
-    # something to encode here.
+    # Whoever wins is decided by machine speed, so a FASTER machine is MORE
+    # likely to see the failure. Observed 5/5 orphaned on an M-series laptop and
+    # 2/2 completed on a GitHub runner, with identical image digests. #67.
     #
-    # What is asserted is the part that holds on both: the sandbox is
-    # provisioned and a turn is started. That still catches a broken Secret, an
-    # unreachable data plane and a migration that did not run, which is what
-    # this gate is for. Which way it went is printed, never asserted.
-    step "the conversation gate, as far as it is architecture-stable"
+    # So neither result can be pinned. What is pinned is that the two agree:
+    # reattach implies orphaned, and no reattach implies a completed turn.
+    # Anything else — reattach that somehow succeeds, or no reattach and no exit
+    # 0 — is new, and worth stopping for. That is stricter than asserting
+    # provisioning alone and it holds on any machine.
+    step "the conversation gate, and that its outcome matches its path"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
-    printf '%s' "$out" | grep -q '"stage":"provision"\|provision' \
+    printf '%s' "$out" | grep -q 'provision' \
       || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
-    printf '%s' "$out" | grep -q '"stage":"turn"\|turn' \
-      || { echo "$out" | tail -20; fail "no turn stage — nothing ran in the sandbox"; }
-    if printf '%s' "$out" | grep -q "plumbing: sandbox provisioned"; then
-      echo "  ✓ provisioned, and the turn completed ($(uname -m))"
-    elif printf '%s' "$out" | grep -q "turn_orphaned"; then
-      echo "  ✓ provisioned; turn orphaned as spritzer#18 describes ($(uname -m))"
+    if printf '%s' "$out" | grep -q '"stage":"reattach"'; then
+      printf '%s' "$out" | grep -q "turn_orphaned" \
+        || { echo "$out" | tail -20; fail "reattach ran and did NOT orphan the turn — spritzer#18 may be fixed. Re-check #67 and the status page."; }
+      echo "  ✓ reattach path taken, turn orphaned as spritzer#18 describes ($(uname -m))"
     else
-      echo "$out" | tail -20
-      fail "the gate failed in a way that is neither outcome — provisioning reached, then something new"
+      printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
+        || { echo "$out" | tail -20; fail "no reattach, so the turn should have completed, and it did not"; }
+      echo "  ✓ fresh provision, turn completed ($(uname -m))"
+      echo "    (spritzer echoes the command back — this is plumbing, not a model reply)"
     fi
 
     # Every seam that needs a CRD, against a real API server rather than

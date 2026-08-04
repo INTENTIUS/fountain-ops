@@ -108,7 +108,11 @@ export const e2e = new Job({
     // live, that the account path works headlessly, that the conversation
     // gate fails for the documented reason and not another one, and that a
     // real API server accepts every seam. Then it tears down.
-    new Step({ name: "Stand it up and assert every claim", run: "just e2e" }),
+    // TEMPORARY — investigate/turn-arch, for #67. Not for merge.
+    // The same probe script that was run on arm64, so the two outputs compare
+    // line for line.
+    new Step({ name: "Stand it up", run: "just up" }),
+    new Step({ name: "Arch probe (#67)", run: "./scripts/arch-probe.sh" }),
     // Logs beat a red X with no context, and only when it failed.
     new Step({
       name: "Diagnostics",

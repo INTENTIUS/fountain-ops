@@ -62,8 +62,10 @@ jobs:
         run: npm ci
       - name: Preflight
         run: just doctor
-      - name: Stand it up and assert every claim
-        run: just e2e
+      - name: Stand it up
+        run: just up
+      - name: 'Arch probe (#67)'
+        run: ./scripts/arch-probe.sh
       - name: Diagnostics
         if: failure()
         run: |

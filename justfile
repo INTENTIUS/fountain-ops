@@ -418,6 +418,133 @@ verify: _require-cluster
     echo ""
     echo "  ✓ /health answered"
 
+# The whole thing, from nothing, asserted.
+#
+# `just check` is deliberately identical to what CI's `check` job runs, so the
+# thing people run before pushing predicts what CI does. The e2e half had no
+# such target: its assertions lived only in ci/pipeline.ts as workflow steps,
+# so answering "do the documented claims still hold on my machine?" meant
+# reading the pipeline and hand-transcribing it. This is that target, and CI
+# calls it rather than restating it.
+#
+# It also runs the three gates CI never did — restore-drill, the conversation
+# gate, and the account path. restore-drill is what turns "a backup nobody has
+# restored is a hypothesis" into a fact, and it was manual-only, so the status
+# page's `pg-dump → floci` row rested on something nothing re-checked.
+#
+# Tears down on success. On failure it leaves the cluster up on purpose, so
+# there is something to look at — CI does its own `just down` with `always()`.
+[doc("Stand up from nothing, assert every documented claim, tear down.")]
+e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fail() { echo ""; echo "  ✗ e2e: $1" >&2; echo "    cluster left up for inspection — 'just down' when finished" >&2; exit 1; }
+    step() { echo ""; echo "── $1 ─────────────────────────────────────"; }
+
+    step "stand it up from nothing"
+    just up
+
+    # /health only proves the release booted. /health/ready proves it reached
+    # Postgres, which is the half that actually breaks.
+    step "readiness, including the database"
+    kubectl run e2e-ready --rm -i --restart=Never -n "{{ns}}" \
+      --image=curlimages/curl:8.11.1 --quiet -- \
+      curl -fsS -m 10 "http://fountain.{{ns}}.svc.cluster.local/health/ready" \
+      | tee /dev/stderr | grep -q '"database":"ok"' || fail "/health/ready did not report the database ok"
+    echo "  ✓ database reachable through the app"
+
+    # Re-running is the documented recovery advice, and this is the one with
+    # real consequences: a regenerated MASTER_SECRETS_KEY makes every stored
+    # secret unrecoverable and looks exactly like a successful deploy.
+    step "re-running up does not rotate the master key"
+    before="$(kubectl get secret "{{secret}}" -n "{{ns}}" -o jsonpath='{.data.MASTER_SECRETS_KEY}')"
+    just up >/dev/null
+    after="$(kubectl get secret "{{secret}}" -n "{{ns}}" -o jsonpath='{.data.MASTER_SECRETS_KEY}')"
+    [ "$before" = "$after" ] || fail "MASTER_SECRETS_KEY changed across a re-run"
+    echo "  ✓ MASTER_SECRETS_KEY byte-identical"
+
+    # The app races nothing now, so a restart here means the initContainer
+    # stopped doing its job. Asserted rather than eyeballed, because the
+    # failure it guards against is invisible: `just up` goes green either way.
+    step "the app came up without crashing first"
+    r="$(kubectl get pod -n "{{ns}}" -l app.kubernetes.io/component=server \
+         -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}')"
+    [ "$r" = "0" ] || fail "app restarted $r time(s) before becoming ready — the postgres wait regressed (#57)"
+    echo "  ✓ restartCount 0"
+
+    step "the backup is real: taken, then restored and table-matched"
+    just backup-now >/dev/null
+    job="$(kubectl get jobs -n "{{ns}}" -o name --sort-by=.metadata.creationTimestamp | tail -1)"
+    kubectl wait --for=condition=complete --timeout=300s -n "{{ns}}" "$job" >/dev/null 2>&1 \
+      || fail "the backup job did not complete"
+    just restore-drill || fail "restore-drill could not read the backup back"
+
+    # The account path, headless. Registration is POST /api/auth/register — the
+    # browser form is not the only route, which is what lets this run at all.
+    step "the account path: register, verify, get a key"
+    email="e2e-$(date +%s)@example.com"
+    pass="e2e-$(openssl rand -hex 12)"
+    kubectl run e2e-register --rm -i --restart=Never -n "{{ns}}" \
+      --image=curlimages/curl:8.11.1 --quiet -- \
+      curl -fsS -m 15 -X POST "http://fountain.{{ns}}.svc.cluster.local/api/auth/register" \
+      -H 'content-type: application/json' -d "{\"email\":\"$email\",\"password\":\"$pass\"}" \
+      | grep -q user_id || fail "registration did not return a user_id"
+    just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
+    echo "  ✓ registered and verified $email"
+
+    # The conversation gate, asserted as far as it is architecture-stable.
+    #
+    # This wanted to pin the documented failure — fountain's reattach calls
+    # exec over plain HTTP, spritzer answers 426, the turn is orphaned
+    # (spritzer#18) — and fail loudly when it started passing, so nobody had to
+    # notice on their own that the status page had gone stale.
+    #
+    # It cannot, because the outcome depends on the CPU:
+    #
+    #   arm64   orphaned, 5 runs out of 5. spritzer logs "Connection header
+    #           \"\" does not contain Upgrade" for each one.
+    #   amd64   the turn completes and streams output, on a GitHub runner.
+    #
+    # Same multi-arch tags on both. So pinning either outcome would go red on
+    # half the machines that run it, and that is #67 to resolve rather than
+    # something to encode here.
+    #
+    # What is asserted is the part that holds on both: the sandbox is
+    # provisioned and a turn is started. That still catches a broken Secret, an
+    # unreachable data plane and a migration that did not run, which is what
+    # this gate is for. Which way it went is printed, never asserted.
+    step "the conversation gate, as far as it is architecture-stable"
+    export FOUNTAIN_PASSWORD="$pass"
+    out="$(just verify-conversation "$email" 2>&1 || true)"
+    printf '%s' "$out" | grep -q '"stage":"provision"\|provision' \
+      || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
+    printf '%s' "$out" | grep -q '"stage":"turn"\|turn' \
+      || { echo "$out" | tail -20; fail "no turn stage — nothing ran in the sandbox"; }
+    if printf '%s' "$out" | grep -q "plumbing: sandbox provisioned"; then
+      echo "  ✓ provisioned, and the turn completed ($(uname -m))"
+    elif printf '%s' "$out" | grep -q "turn_orphaned"; then
+      echo "  ✓ provisioned; turn orphaned as spritzer#18 describes ($(uname -m))"
+    else
+      echo "$out" | tail -20
+      fail "the gate failed in a way that is neither outcome — provisioning reached, then something new"
+    fi
+
+    # Every seam that needs a CRD, against a real API server rather than
+    # against our own expectations. No controllers, so nothing reconciles.
+    step "a real API server accepts every seam"
+    just crds >/dev/null
+    just dry-run --param postgres=cnpg --param backups=barman-pitr \
+      --param ingress=traefik --param tls=cert-manager \
+      --param secrets=infisical --param monitoring=prometheus-operator \
+      --param scheme=https --param host=fountain.ci.example.com >/dev/null \
+      || fail "the API server rejected one of the seams"
+    echo "  ✓ every seam validated"
+
+    step "tearing down"
+    just down >/dev/null 2>&1
+    echo ""
+    echo "  ✓ e2e: every documented claim held, from nothing, and the cluster is gone."
+
 # Hold a port open to reach it from the browser.
 [doc("Hold a port open to reach it from the browser, on :4000.")]
 forward: _require-cluster

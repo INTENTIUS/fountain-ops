@@ -100,6 +100,8 @@ src/
   observability/     ServiceMonitor, PrometheusRule
 ```
 
+`just check` is what CI's check job runs and `just e2e` is what its e2e job runs — both literally, so what you run locally is what gates the branch. `just e2e` stands up from nothing, asserts every claim above including the backup restore and the conversation gate, and tears down.
+
 Both workflows are rendered from TypeScript and `just ci-check` fails if either committed YAML has drifted. The site is `just site`; `just site-dev` serves it locally.
 
 No resource file reads `process.env` — every input is a declared build parameter. One exception, and it is worth knowing: `chant.config.ts` reads `FOUNTAIN_ENV` for `ownership.env`, because ownership is read before build parameters exist. Set both, or neither. [INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396).

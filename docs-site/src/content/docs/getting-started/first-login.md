@@ -66,16 +66,8 @@ Someone hitting that loop usually concludes their password is wrong.
 
 The recipe does not `kubectl exec` into the running pod. It runs a separate
 pod and lifts its spec from the live Deployment, so the eval gets exactly the
-env the app runs with and cannot drift from it.
-
-On `v0.3.0` there was no choice: `Release` tasks booted the whole application,
-including the metrics endpoint on 9568, which is already bound in the serving
-pod, so the documented `bin/fountain_server eval` died with `:eaddrinuse`
-before it reached the database. Since `v0.4.0` these tasks start only the
-database connection
-([fountain#256](https://github.com/BinaryBourbon/fountain/issues/256)), so
-`exec` would work now. The separate pod stays anyway, because leaving the
-serving pod alone is still worth it.
+env the app runs with and cannot drift from it, and the serving pod is left
+alone.
 
 ## Admin
 
@@ -83,11 +75,8 @@ serving pod alone is still worth it.
 just promote-admin you@example.com
 ```
 
-`Fountain.Release.promote_admin/1` is upstream's first-admin bootstrap; before
-it existed, the deploy guides ended in raw SQL against the production
-database. It has been in the pin since `v0.4.0`
-([#31](https://github.com/INTENTIUS/fountain-ops/issues/31) tracked waiting
-for it). The grant is audit-recorded as `admin.role.granted` with a nil actor,
+`Fountain.Release.promote_admin/1` is upstream's first-admin bootstrap.
+The grant is audit-recorded as `admin.role.granted` with a nil actor,
 so a promotion made this way is as visible in the admin audit trail as one
 made from the panel.
 

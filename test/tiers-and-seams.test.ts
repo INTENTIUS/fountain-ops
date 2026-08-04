@@ -293,3 +293,21 @@ describe("tiers are distinct, and size is not a tier", () => {
     expect(tierShape("ha").clustered).toBe(true);
   });
 });
+
+describe("the secrets seam", () => {
+  test("three modes, and none of them puts a value in source", () => {
+    // reference: the cluster is the source of truth.
+    // sops:      this repo is, as ciphertext.
+    // infisical: an Infisical server is.
+    for (const mode of ["reference", "sops", "infisical"] as const) {
+      expect(resolveSeams({ ...base, secrets: mode }, {}).secrets).toBe(mode);
+    }
+  });
+
+  test("sops is expressible on either target", () => {
+    // The point of it: it needs no cloud account, so it works where k3d works
+    // and where a real cluster works, unchanged.
+    expect(resolveSeams(targetShape("k3d").seams, { secrets: "sops" }).secrets).toBe("sops");
+    expect(resolveSeams(targetShape("kubernetes").seams, { secrets: "sops" }).secrets).toBe("sops");
+  });
+});

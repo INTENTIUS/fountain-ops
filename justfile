@@ -105,6 +105,8 @@ doctor:
         kubectl) echo "https://kubernetes.io/docs/tasks/tools/#kubectl" ;;
         node|npm) echo "https://nodejs.org/en/download  (node ships npm)" ;;
         jq)      echo "https://jqlang.github.io/jq/download/" ;;
+        sops)    echo "https://github.com/getsops/sops/releases  (only for secrets=sops)" ;;
+        age)     echo "https://github.com/FiloSottile/age/releases  (only for secrets=sops)" ;;
       esac
     }
 
@@ -138,6 +140,17 @@ doctor:
       echo "  ✗ docker   installed, but the daemon is not running"
       echo "             start Docker Desktop, or: sudo systemctl start docker"
     fi
+
+    # Optional, and only for secrets=sops. Reported rather than required,
+    # because failing a preflight over a tool most deployments never need is
+    # how a preflight gets ignored.
+    for t in sops age; do
+      if command -v "$t" >/dev/null 2>&1; then
+        printf "  ✓ %-8s %s\n" "$t" "$("$t" --version 2>&1 | head -1 | cut -c1-40)"
+      else
+        printf "  · %-8s not installed — only needed for secrets=sops\n" "$t"
+      fi
+    done
 
     # `just` is not in the loop above for the obvious reason: you are running it.
     if [ "$ok" = 0 ]; then echo ""; echo "  everything this needs is here. Next:  npm install && just up"; fi
@@ -229,6 +242,65 @@ storage-init: _require-cluster
       --env=AWS_DEFAULT_REGION=us-east-1 \
       -- --endpoint-url "$ep" s3 mb "s3://$bucket" 2>&1 | grep -vE "^pod .* deleted$" || true
     echo "  ✓ s3://$bucket on the emulated store"
+
+# Decrypt secrets/platform.enc.yaml into the cluster Secret.
+secrets-sync: _require-cluster
+    #!/usr/bin/env bash
+    # The `secrets=sops` half of the seam: source of truth is this repo, as
+    # ciphertext, and the cluster is a copy. The opposite of `just secret`,
+    # which mints values on the spot — fine for one laptop, and not a story you
+    # can carry to a second machine or a second operator.
+    #
+    # Nothing decrypted is ever written to disk. sops streams to stdout, kubectl
+    # reads it, and a decrypted file cannot be left behind because one is never
+    # created.
+    set -euo pipefail
+
+    enc=secrets/platform.enc.yaml
+    if [ ! -f "$enc" ]; then
+      echo "  ✗ $enc does not exist." >&2
+      echo "" >&2
+      echo "    cp secrets/platform.example.yaml $enc" >&2
+      echo "    \$EDITOR $enc" >&2
+      echo "    sops --encrypt --in-place $enc" >&2
+      exit 2
+    fi
+    command -v sops >/dev/null || { echo "  ✗ sops is not installed — see just doctor" >&2; exit 2; }
+
+    # sops looks for age identities in a different place per platform:
+    # ~/Library/Application Support/sops/age/keys.txt on macOS,
+    # ~/.config/sops/age/keys.txt elsewhere. `age-keygen -o` and most
+    # instructions on the internet write the second one, so on a Mac the key
+    # exists, is correct, and is not found — and the error is
+    #
+    #   identity did not match any of the recipients
+    #
+    # which reads like the wrong key rather than the wrong directory.
+    if [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
+      for candidate in \
+        "$HOME/Library/Application Support/sops/age/keys.txt" \
+        "${XDG_CONFIG_HOME:-$HOME/.config}/sops/age/keys.txt"; do
+        if [ -f "$candidate" ]; then export SOPS_AGE_KEY_FILE="$candidate"; break; fi
+      done
+    fi
+    if [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
+      echo "  ✗ no age identity found." >&2
+      echo "" >&2
+      echo "    age-keygen -o \"\${XDG_CONFIG_HOME:-\$HOME/.config}/sops/age/keys.txt\"" >&2
+      echo "    then add its public half to .sops.yaml and re-encrypt." >&2
+      exit 2
+    fi
+
+    # --output-type dotenv, because --from-env-file wants KEY=VALUE and the
+    # file on disk is YAML. sops converts; kubectl skips the comment lines.
+    kubectl create namespace "{{ns}}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    sops --decrypt --output-type dotenv "$enc" \
+      | kubectl create secret generic "{{secret}}" -n "{{ns}}" --from-env-file=/dev/stdin \
+          --dry-run=client -o yaml \
+      | kubectl apply -f - >/dev/null
+
+    n="$(kubectl get secret "{{secret}}" -n "{{ns}}" -o jsonpath='{.data}' | tr ',' '\n' | grep -c ':' || true)"
+    echo "  ✓ {{secret}} synced from $enc ($n keys)"
 
 # ── build and apply ────────────────────────────────────────────────────────
 

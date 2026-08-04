@@ -12,7 +12,29 @@
  */
 
 export type PostgresMode = "reference" | "bundled" | "cnpg";
-export type SecretsMode = "reference" | "infisical";
+/**
+ * Where the platform Secret comes from.
+ *
+ * Two philosophies, and the seam exists because both are legitimate:
+ *
+ *   reference   source of truth is the cluster. Something put a Secret there
+ *               and this repo reads it by name. Honest, and says nothing about
+ *               how it got there.
+ *   sops        source of truth is this repo, encrypted. Values live in
+ *               secrets/platform.enc.yaml as ciphertext, reviewable in a diff,
+ *               and are decrypted into the cluster by `just secrets-sync`.
+ *   infisical   source of truth is an Infisical server, materialised into a
+ *               Secret by its operator.
+ *
+ * `sops` is the one that answers "where do local secrets come from" without a
+ * cloud account, which is what the k3d target needs. The alternative it
+ * replaces is `just secret` minting values on the spot — fine for a laptop and
+ * not a story you can carry to a second machine or a second operator.
+ *
+ * None of these put a value in source. SOPS commits ciphertext; decryption
+ * needs a key that is not in the repo.
+ */
+export type SecretsMode = "reference" | "sops" | "infisical";
 export type IngressMode = "omit" | "ingress" | "traefik";
 export type TlsMode = "omit" | "cert-manager";
 export type BackupsMode = "omit" | "pg-dump" | "barman-pitr";

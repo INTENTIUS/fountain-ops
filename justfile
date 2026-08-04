@@ -36,17 +36,20 @@ infisical_version := "0.11.7"
 prom_version    := "0.79.2"
 certmgr_version := "1.16.2"
 
+[doc("List every recipe. This is what bare `just` runs.")]
 default:
     @just --list
 
 # ── the whole loop ─────────────────────────────────────────────────────────
 
 # Stand up everything, from nothing, and prove it serves.
+[doc("Stand up everything, from nothing, and prove it serves.")]
 up: cluster-up secret build apply wait storage-init verify
     @echo ""
     @echo "fountain is up. Reach it with:  just forward   →  http://localhost:4000"
 
 # Remove everything this created, and nothing it did not.
+[doc("Remove everything this created, and nothing it did not.")]
 down: cluster-down
 
 # ── the guard ──────────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ _require-cluster:
 # A tool reported as `missing` and nothing else is where someone trying this
 # out stops trying it out, so every ✗ carries the install line for the platform
 # it is running on.
+[doc("What this needs on the machine, whether it is there, and how to get it.")]
 doctor:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -159,6 +163,7 @@ doctor:
 # ── cluster ────────────────────────────────────────────────────────────────
 
 # Create the k3d cluster. Idempotent.
+[doc("Create the k3d cluster, and wait for its apiserver. Idempotent.")]
 cluster-up:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -186,12 +191,14 @@ cluster-up:
       sleep 2
     done
 
+[doc("Delete the k3d cluster.")]
 cluster-down:
     -k3d cluster delete "{{cluster}}"
 
 # ── secrets ────────────────────────────────────────────────────────────────
 
 # Mint the platform secret, once. Never rotates an existing one.
+[doc("Mint the platform secret, once. Never rotates an existing one.")]
 secret: _require-cluster
     #!/usr/bin/env bash
     # The interim of INTENTIUS/chant#1365 — values are generated here rather
@@ -223,6 +230,7 @@ secret: _require-cluster
 # way a missing credential does — late, in the upload container, after a good
 # dump has already been taken. A real bucket is yours to create; this only ever
 # touches the emulator.
+[doc("Create the backup bucket, when the storage seam is the emulator.")]
 storage-init: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
@@ -244,6 +252,7 @@ storage-init: _require-cluster
     echo "  ✓ s3://$bucket on the emulated store"
 
 # Decrypt secrets/platform.enc.yaml into the cluster Secret.
+[doc("Decrypt secrets/platform.enc.yaml into the cluster Secret (secrets=sops).")]
 secrets-sync: _require-cluster
     #!/usr/bin/env bash
     # The `secrets=sops` half of the seam: source of truth is this repo, as
@@ -304,12 +313,15 @@ secrets-sync: _require-cluster
 
 # ── build and apply ────────────────────────────────────────────────────────
 
+[doc("Render the manifests to dist/fountain.yaml.")]
 build:
     npx chant build src -o dist/fountain.yaml --format yaml {{params}}
 
+[doc("Lint the source.")]
 lint:
     npx chant lint src
 
+[doc("Run the unit tests.")]
 test:
     npx vitest run
 
@@ -317,11 +329,13 @@ test:
 #
 # Two, because `chant build <dir>` collects a directory into one output file:
 # ci/ renders ci.yml, pages/ renders pages.yml.
+[doc("Render both GitHub workflows from their TypeScript declarations.")]
 ci:
     npx chant build ci -o .github/workflows/ci.yml --format yaml
     npx chant build pages -o .github/workflows/pages.yml --format yaml
 
 # Fail if either committed workflow has drifted from its declaration.
+[doc("Fail if either committed workflow has drifted from its declaration.")]
 ci-check:
     #!/usr/bin/env bash
     # GitHub reads YAML from the default branch, so the rendered file has to be
@@ -353,6 +367,7 @@ ci-check:
 # The same target CI runs, so what gets published is what you previewed. Uses
 # `npm ci` when there is a lockfile to honour, which is what CI wants and what
 # keeps a local build from quietly resolving a different Starlight.
+[doc("Build the docs site, the same way CI does.")]
 site:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -362,6 +377,7 @@ site:
     echo "  ✓ docs-site/dist built"
 
 # Serve the docs site locally with hot reload.
+[doc("Serve the docs site locally with hot reload.")]
 site-dev:
     cd docs-site && npm install && npm run dev
 
@@ -370,16 +386,20 @@ site-dev:
 # Worth its own step: `chant build` executes the source, so a property that
 # does not exist reads as undefined rather than failing. That is how
 # monitoring="prometheus-operator" emitted nothing for as long as it did.
+[doc("Typecheck the source against the lexicon's own types.")]
 typecheck:
     npx tsc --noEmit -p tsconfig.json
 
 # Build, typecheck, lint and test without touching a cluster.
+[doc("Typecheck, lint, test and build. Touches no cluster. What CI runs.")]
 check: typecheck lint test build
 
+[doc("Build, then apply the manifests to the cluster.")]
 apply: build _require-cluster
     kubectl apply -f dist/fountain.yaml
 
 # Wait for both rollouts. Fountain migrates at boot, so give it room.
+[doc("Wait for both rollouts. Fountain migrates at boot, so give it room.")]
 wait: _require-cluster
     kubectl rollout status deployment/fountain-postgres -n "{{ns}}" --timeout=120s
     kubectl rollout status deployment/fountain -n "{{ns}}" --timeout=300s
@@ -387,6 +407,7 @@ wait: _require-cluster
 # ── verify ─────────────────────────────────────────────────────────────────
 
 # Prove it serves, from inside the cluster so no port-forward is needed.
+[doc("Prove it serves, probed from inside the cluster.")]
 verify: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
@@ -398,6 +419,7 @@ verify: _require-cluster
     echo "  ✓ /health answered"
 
 # Hold a port open to reach it from the browser.
+[doc("Hold a port open to reach it from the browser, on :4000.")]
 forward: _require-cluster
     @echo "http://localhost:4000  (ctrl-c to stop)"
     kubectl port-forward -n "{{ns}}" svc/fountain 4000:80
@@ -417,6 +439,7 @@ forward: _require-cluster
 # /conversations.
 #
 # So: register at /auth/register first, then run this with the same address.
+[doc("Mark an account's email verified, so it can actually use the instance.")]
 verify-email EMAIL: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
@@ -498,6 +521,7 @@ verify-email EMAIL: _require-cluster
 # Needs a verified account — register, then `just verify-email`. Password comes
 # from $FOUNTAIN_PASSWORD rather than the command line, so it stays out of your
 # shell history.
+[doc("Prove a conversation runs: throwaway agent, one prompt, stream, tear down.")]
 verify-conversation EMAIL MODE="plumbing": _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
@@ -587,6 +611,7 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     fi
 
 # Print MASTER_SECRETS_KEY, so it can be kept somewhere the cluster is not.
+[doc("Print MASTER_SECRETS_KEY, so it can be kept somewhere the cluster is not.")]
 master-key: _require-cluster
     #!/usr/bin/env bash
     # The one thing a database backup cannot recreate.
@@ -624,20 +649,25 @@ master-key: _require-cluster
 
 # ── operating ──────────────────────────────────────────────────────────────
 
+[doc("Everything in the namespace.")]
 status: _require-cluster
     kubectl get all,pvc,cronjob -n "{{ns}}"
 
+[doc("The app's logs, following.")]
 logs: _require-cluster
     kubectl logs -n "{{ns}}" deployment/fountain --tail=100 -f
 
+[doc("The database's logs.")]
 pg-logs: _require-cluster
     kubectl logs -n "{{ns}}" deployment/fountain-postgres --tail=50
 
 # Run the backup CronJob now instead of waiting for its schedule.
+[doc("Run the backup CronJob now instead of waiting for its schedule.")]
 backup-now: _require-cluster
     kubectl create job -n "{{ns}}" --from=cronjob/fountain-pg-backup "manual-$(date +%s)"
 
 # Prove the latest backup can be read back, without touching the live database.
+[doc("Prove the latest backup can be read back, without touching the live database.")]
 restore-drill: _require-cluster
     #!/usr/bin/env bash
     # The backup job says "Backup complete" when an object of the right size
@@ -723,10 +753,12 @@ restore-drill: _require-cluster
     echo "    key it was written under — see \`just master-key\`."
 
 # What the deployment would look like elsewhere, without applying anything.
+[doc("What the deployment would look like elsewhere, without applying anything.")]
 preview target="kubernetes" tier="ha" class="nginx":
     npx chant build src --format yaml --param target={{target}} --param tier={{tier}} --param ingressClassName={{class}}
 
 # Ask a real API server whether it would accept the output.
+[doc("Ask a real API server whether it would accept the output.")]
 dry-run *ARGS: _require-cluster
     #!/usr/bin/env bash
     # `just check` proves the manifests build. This proves a Kubernetes API
@@ -742,6 +774,7 @@ dry-run *ARGS: _require-cluster
     kubectl apply --dry-run=server -f "$out"
 
 # Install the controllers that reconcile what `just crds` declares.
+[doc("Install the controllers that reconcile what `just crds` declares.")]
 operators: _require-cluster
     #!/usr/bin/env bash
     # `just crds` is schemas only: manifests validate, nothing runs. This is the
@@ -796,6 +829,7 @@ operators: _require-cluster
     echo "  operators are up. Now: just up postgres=cnpg  (or --param postgres=cnpg)"
 
 # Install the CRDs the operator seams declare against, without the operators.
+[doc("Install the CRDs the operator seams declare against, without the operators.")]
 crds: _require-cluster
     #!/usr/bin/env bash
     # Enough to validate manifests and nothing else: no controller runs, so

@@ -154,3 +154,46 @@ now.
 
 `force-ssl-redirect` really is https-only — forcing a redirect to a scheme
 nothing terminates is a loop.
+
+
+## What `target` will and will not ever mean
+
+`target` answers **which cluster**, not **what kind of thing runs this**. Decided
+in [#25](https://github.com/INTENTIUS/fountain-ops/issues/25).
+
+A managed cluster — EKS, GKE, AKS — is `target=kubernetes` with different seam
+defaults: a cloud LoadBalancer, cloud DNS, a managed Postgres behind
+`postgres=reference`. Not a new value.
+
+Anything without a Kubernetes API is **not** a third value either. Every
+resource module here emits `K8s::*`, and a Task Definition is not a Deployment
+with different field names — the unit of scheduling, the health check contract,
+the service discovery mechanism and the secret injection path are all different
+shapes. Adding an enum value would advertise a config change and mean a rewrite.
+
+chant is not the constraint; it ships `aws`, `fly`, `gcp` and `azure` lexicons.
+This repo's emitters are.
+
+### What does generalise
+
+The seam model, and this is the interesting part:
+
+| seam | on a non-Kubernetes runtime |
+|---|---|
+| `postgres` | `reference` against RDS or Fly Postgres |
+| `secrets` | Secrets Manager, SSM, Fly secrets |
+| `ingress` | an ALB, or nothing at all where the platform routes |
+| `tls` | ACM, or platform-provided |
+| `backups` | the same `pg_dump`, on a different scheduler |
+| `dataPlane` | **unchanged** |
+| `storage` | **unchanged** |
+
+The last two do not change because an HTTP API and an S3 bucket do not care what
+schedules the caller. That is why the axes were right and only the emitters are
+Kubernetes-shaped.
+
+If a second emitter tree ever lands ([#54](https://github.com/INTENTIUS/fountain-ops/issues/54),
+[#55](https://github.com/INTENTIUS/fountain-ops/issues/55)), `target` is the
+wrong name for what selects between them — the honest move is a new axis above
+it rather than stretching this one. Said here so the decision is falsifiable
+rather than permanent.

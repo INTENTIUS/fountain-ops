@@ -1,8 +1,29 @@
 /**
- * Targets — where the substrate runs.
+ * Targets — which Kubernetes cluster this runs on.
  *
- * A target picks the substrate and, with it, which seam defaults are coherent
+ * A target picks the cluster and, with it, which seam defaults are coherent
  * there. It does not decide how durable the deployment is; that is the tier.
+ *
+ * ## `target` answers "which cluster", not "what kind of thing runs this"
+ *
+ * Decided in #25 and recorded here rather than only in a closed issue.
+ *
+ * `k3d` and `kubernetes` are both Kubernetes, and a managed cluster — EKS, GKE,
+ * AKS — is `target=kubernetes` with different seam defaults rather than a new
+ * value. Anything without a Kubernetes API is not a third value on this axis:
+ * every resource module in src/ emits K8s::*, and a Task Definition is not a
+ * Deployment with different field names. Adding an enum value would advertise a
+ * config change and mean a rewrite.
+ *
+ * chant is not the constraint — it ships aws, fly, gcp and azure lexicons. This
+ * repo's emitters are. If a second emitter tree ever lands (#54, #55), `target`
+ * is the wrong name for what selects between them and the honest move is a new
+ * axis above it, not a stretched one.
+ *
+ * What generalises is the seam model: postgres, secrets, ingress, tls, backups,
+ * monitoring, dataPlane and storage all mean something on any substrate, and
+ * dataPlane and storage do not change at all — an HTTP API and an S3 bucket do
+ * not care what schedules the caller.
  *
  * This axis exists separately from the tier because they answer different
  * questions and mixing them produces knobs that mean two things at once. A

@@ -40,6 +40,14 @@ just verify-email you@example.com
 
 Skip it and nothing tells you: signing in *looks* like it worked, and then every page sends you back to the login form with no message. This deployment sends no mail, so the verification link never arrives and cannot. [Why, and what it does](https://intentius.io/fountain-ops/getting-started/first-login/).
 
+The first admin is minted the same way — a fresh instance has none, and no page offers to create one:
+
+```bash
+just promote-admin you@example.com
+```
+
+That runs upstream's first-admin bootstrap against a verified, registered account, and `/admin` answers for it from then on. The grant is audit-recorded like one made from the panel. You do not need admin to use the instance.
+
 ### When it goes wrong
 
 The steps of `just up` are separate targets, because when a deploy fails you want the step, not the whole thing again.

@@ -8,28 +8,54 @@ and overlays what is live. This repo binds the `local` environment to its k3d
 cluster, so behold can read the deployed estate rather than only the source
 graph:
 
+From the behold repo, with this project already up (`just up`):
+
 ```bash
-npm run dev -- preview /path/to/fountain-ops --env local   # from the behold repo
+kubectl config use-context k3d-fountain-local
+FOUNTAIN_ENV=local npm run dev -- serve /path/to/fountain-ops --env local
 ```
 
 Every declared resource comes back observed, plus the running pods as runtime
-nodes.
+nodes. On a clean `just up` that is eleven `good` and four `runtime`:
 
-**Only `local` is bound.** chant's k8s reader resolves `--env <name>` to the
-context named in `chant.config.ts`; with no binding it reads whatever context
-happens to be ambient, which is how pointing behold at this repo once had it
-attempt to observe against a live EKS cluster in another account. A declared
-binding is checked on every read and refuses on mismatch. That is right for a
-laptop and wrong for a cluster this repo knows nothing about, which is why
-`dev` and everything else stay unbound. Bring your own profile:
+```
+/api/overlay → nodes: 11  _status: {"good":11}
+   good  Apps::Deployment  flociDeployment
+   good  Core::Service     flociService
+```
+
+`serve` is the command, not `preview`. `preview` renders the declared source
+graph; `serve` is the one that adds the live overlay, `/api/ops` and the
+substrate strip.
+
+:::caution[Both lines above are load-bearing]
+**`FOUNTAIN_ENV=local`.** behold shells this project's own chant, and chant
+reads `FOUNTAIN_ENV` for `ownership.env`. `just` exports it; behold is not run
+through `just`, so nothing sets it for you. Without it the graph is built with
+`env=dev` while the cluster holds `env=local` resources, and every node comes
+back unmatched.
+
+**The kubectl context.** `chant.config.ts` binds `local` to
+`k3d-fountain-local`, and that binding is currently **not** honoured: the k8s
+reader talks to whatever context is ambient. Any k3d cluster created by
+anything else on the machine takes that context silently, and the estate then
+paints entirely grey with `read-failed` as the only explanation. Reproduced on
+chant 0.38 and 0.41 and filed as
+[chant#1488](https://github.com/INTENTIUS/chant/issues/1488). Until it lands,
+set the context yourself.
+
+The `just` targets are unaffected: `_require-cluster` refuses to act on a
+context it does not recognise. It is reads through chant that have no such
+guard.
+:::
+
+**Only `local` is bound.** `dev` and everything else stay unbound on purpose,
+so nothing here can point a read at a cluster this repo knows nothing about.
+Bring your own profile:
 
 ```ts
 k8s: { profiles: { staging: { context: "your-context" } } }
 ```
-
-`just` exports `FOUNTAIN_ENV=local`, so a local deploy is owned, labelled and
-bound under one name. Without it the ownership marker says `dev` while behold
-reads `--env local` and matches nothing.
 
 ## Operating it from there
 

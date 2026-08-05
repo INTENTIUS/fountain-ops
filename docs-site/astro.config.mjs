@@ -7,6 +7,12 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	site: 'https://intentius.io',
 	base: '/fountain-ops',
+	// First login stopped being a page when the bootstrap moved in-app: the
+	// happy path lives in stand-it-up, the manual recipes in the reference.
+	// The old URL is in READMEs and link history, so it redirects.
+	redirects: {
+		'/getting-started/first-login/': '/fountain-ops/reference/promote-admin/',
+	},
 	integrations: [
 		starlight({
 			title: 'fountain-ops',
@@ -26,7 +32,6 @@ export default defineConfig({
 					items: [
 						{ label: 'What this is', slug: 'getting-started/overview' },
 						{ label: 'Stand it up locally', slug: 'getting-started/stand-it-up' },
-						{ label: 'First login', slug: 'getting-started/first-login' },
 						{ label: 'Stand it up on a real cluster', slug: 'getting-started/real-cluster' },
 					],
 				},
@@ -39,6 +44,7 @@ export default defineConfig({
 						{ label: 'The data plane', slug: 'reference/data-plane' },
 						{ label: 'Backups and restore', slug: 'reference/backups' },
 						{ label: 'Secrets', slug: 'reference/secrets' },
+						{ label: 'Promoting an admin', slug: 'reference/promote-admin' },
 						{ label: 'The just targets', slug: 'reference/commands' },
 						{ label: 'CI and the site', slug: 'reference/ci' },
 						{ label: 'Operating from behold', slug: 'reference/behold' },

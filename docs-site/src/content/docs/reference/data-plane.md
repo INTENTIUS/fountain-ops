@@ -87,6 +87,35 @@ command back. A green local conversation is a *plumbing* check. It is not
 somewhere to judge agent behaviour or sandbox security, and single-node Postgres
 is likewise not somewhere to benchmark durability.
 
+## An account and a key, headless
+
+`POST /api/auth/register` registers the same way the form does — under this
+deployment's defaults the account self-verifies at registration, and the
+instance's first account becomes the admin (fountain ADR 0011) — which is what
+a script, a CI step or an agent needs:
+
+```bash
+curl -sX POST http://localhost:4000/api/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"..."}'
+
+{"message":"Account created. You can sign in now.","user_id":"60e3c0e6-..."}
+```
+
+An API key comes from the same shape of call:
+
+```bash
+curl -sX POST http://localhost:4000/api/auth/token \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"..."}'
+
+{"prefix":"ftn_75cd","key_id":"39a7161a-...","api_key":"ftn_75cda1c2..."}
+```
+
+That key is what the conversation gate below authenticates with, so the whole
+path from nothing to a running conversation is reachable without opening a
+browser — and without a single `kubectl` command.
+
 ## The conversation gate
 
 `just verify` asks `/health`. A 200 there says the release booted; it does not

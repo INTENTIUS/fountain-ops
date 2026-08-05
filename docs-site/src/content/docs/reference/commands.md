@@ -82,7 +82,8 @@ holds data you want back.
 Both take an email address, validate its shape before doing anything, and run
 the release task in a throwaway pod whose spec is lifted from the live
 Deployment, so the eval gets exactly the environment the app runs with. The
-full story is in [First login](/fountain-ops/getting-started/first-login/).
+full story is in
+[Promoting an admin manually](/fountain-ops/reference/promote-admin/).
 
 | target | what it does |
 |---|---|

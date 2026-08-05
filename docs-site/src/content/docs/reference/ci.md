@@ -50,31 +50,35 @@ Stands up from nothing and asserts, in order:
 | the backup | taken, then restored into a throwaway and table-matched against live |
 | the account path | register over the API, `verify-email`, headless throughout |
 | the first-admin bootstrap | `promote-admin` grants the role, audit-recorded |
-| the conversation gate | a sandbox is provisioned and a turn starts |
+| the conversation gate | the outcome matches the path taken, either way |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 
 Then it tears down. On failure it leaves the cluster up so there is something
 to look at; CI runs its own teardown regardless.
 
-:::caution[The conversation gate's outcome depends on the CPU]
-This was going to pin the documented failure and fail loudly if the gate ever
-started passing. It cannot, because the two do not agree:
+:::caution[The conversation gate has two legitimate outcomes]
+Whether a turn completes is decided by a race, so neither result can be pinned.
+The pinned release branches on `sandbox.status`: `ready` reattaches, and
+reattach calls `list_sessions`, which spritzer answers `426`, orphaning the
+turn. `pending` or `starting` provisions fresh and the turn runs to
+`exit_code: 0`.
 
-| | |
-|---|---|
-| **arm64** | turn orphaned, 5 runs of 5; spritzer logs `Connection header "" does not contain Upgrade` each time |
-| **amd64** | the turn completes and streams output, on a GitHub runner |
+Machine speed decides which, so a faster machine sees the orphaned turn more
+often. Measured with identical image digests: 5 of 5 orphaned on a laptop, 2 of
+2 completed on a CI runner.
+[The data plane](/fountain-ops/reference/data-plane/) has the detail.
 
-Same multi-arch image tags on both sides, so
-[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is not simply
-"open": it reproduces on one architecture and not the other.
-[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) is where that gets
-resolved.
+So `just e2e` asserts the **pairing** rather than a result. Reattach implies an
+orphaned turn; no reattach implies a completed one. A reattach that succeeds,
+or a fresh provision that does not finish, stops the build:
 
-`just e2e` therefore asserts only the part that holds on both: a sandbox is
-provisioned and a turn starts. That still catches a broken Secret, an
-unreachable data plane and a migration that did not run. Which way the turn
-went is printed, never asserted.
+```
+✗ reattach ran and did NOT orphan the turn — spritzer#18 may be fixed.
+  Re-check #67 and the status page.
+```
+
+That holds on any machine and is stricter than asserting provisioning alone.
+Which path was taken is printed with the architecture beside it.
 :::
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving

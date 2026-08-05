@@ -55,6 +55,7 @@ matching live, the account path end to end, and every seam against a real API
 server. The rows it does not cover are the ones needing operators or a cluster
 this repo did not create, and those rows say so.
 
-It also pins the conversation gate to its *failure*, so
-[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) landing breaks
-the build instead of quietly making this page wrong in the other direction.
+The conversation gate is the one row with two legitimate outcomes, so `just
+e2e` asserts that the outcome matches the path taken rather than asserting a
+result. A reattach that stops orphaning turns fails the build, which is how
+this page finds out it has gone stale in the other direction.

@@ -1,5 +1,5 @@
 ---
-title: Stand it up on a laptop
+title: Stand it up locally
 description: Five minutes on a laptop, most of it pulling images.
 ---
 

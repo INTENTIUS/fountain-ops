@@ -50,7 +50,7 @@ implementation detail and are not listed here.
 | target | what it does |
 |---|---|
 | `doctor` | Reports whether `docker`, `k3d`, `kubectl`, `node`, `npm` and `jq` are present, whether the Docker daemon is running, and how to install anything missing on this platform. `sops` and `age` are reported but never required — they are only needed for `secrets=sops`. Exits non-zero if a required tool is absent |
-| `up` | Runs `cluster-up`, `secret`, `build`, `apply`, `wait`, `storage-init` and `verify`, in that order. Safe to re-run: it will not create a second cluster and will not mint a second secret over the first. See [Stand it up](/fountain-ops/getting-started/stand-it-up/) |
+| `up` | Runs `cluster-up`, `secret`, `build`, `apply`, `wait`, `storage-init` and `verify`, in that order. Safe to re-run: it will not create a second cluster and will not mint a second secret over the first. See [Stand it up on a laptop](/fountain-ops/getting-started/stand-it-up/) |
 | `down` | Deletes the k3d cluster, which is everything this created and nothing it did not |
 | `cluster-up` | Creates the `fountain-local` k3d cluster if it does not exist, switches `kubectl` to its context, then polls `/readyz` for up to two minutes. Idempotent |
 | `cluster-down` | Deletes the k3d cluster. What `down` delegates to |

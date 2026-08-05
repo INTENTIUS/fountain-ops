@@ -25,9 +25,9 @@ export default defineConfig({
 					label: 'Getting started',
 					items: [
 						{ label: 'What this is', slug: 'getting-started/overview' },
-						{ label: 'Stand it up', slug: 'getting-started/stand-it-up' },
+						{ label: 'Stand it up on a laptop', slug: 'getting-started/stand-it-up' },
 						{ label: 'First login', slug: 'getting-started/first-login' },
-						{ label: 'Deploy to a real cluster', slug: 'getting-started/real-cluster' },
+						{ label: 'Stand it up on a real cluster', slug: 'getting-started/real-cluster' },
 					],
 				},
 				{

@@ -1,5 +1,5 @@
 ---
-title: Stand it up
+title: Stand it up on a laptop
 description: Five minutes on a laptop, most of it pulling images.
 ---
 
@@ -81,3 +81,9 @@ five seconds, forever. That is twelve lines a minute in `just logs`, saying
 traces somewhere real is the `otelTraces` parameter, in
 [Parameters](/fountain-ops/reference/parameters/).
 :::
+
+## The same build, elsewhere
+
+The other page in this pair is
+[Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/):
+the same build, aimed at a cluster k3d did not create.

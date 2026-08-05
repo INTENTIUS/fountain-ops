@@ -1,5 +1,5 @@
 ---
-title: Deploy to a real cluster
+title: Stand it up on a real cluster
 description: The order of operations for target=kubernetes, and which of its steps nothing here has ever run.
 ---
 

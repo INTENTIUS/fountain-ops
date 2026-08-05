@@ -199,6 +199,9 @@ export default {
     // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
     emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
     registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
+    // In-app first-admin bootstrap (fountain ADR 0011): first verified account
+    // is promoted while no admin exists. Ignored by images ≤ v0.4.0.
+    firstUserAdmin: { type: "string", enum: ["true", "false"], default: "true" },
     // Unset derives from the postgres seam: false for the bundled one, which
     // serves no TLS, true otherwise. Settable because "otherwise" includes a
     // referenced Postgres that does not serve TLS either, and assuming it did

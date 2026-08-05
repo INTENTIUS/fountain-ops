@@ -86,8 +86,8 @@ full story is in [First login](/fountain-ops/getting-started/first-login/).
 
 | target | what it does |
 |---|---|
-| `verify-email EMAIL` | Marks a registered account's email verified. This deployment sends no mail, so without it every authenticated page bounces back to the login form with nothing on screen saying why |
-| `promote-admin EMAIL` | Grants an account the admin role through upstream's first-admin bootstrap, audit-recorded as `admin.role.granted`. Already-an-admin is success. There is no revoke target — that is done from the panel, by an admin |
+| `verify-email EMAIL` | Marks a registered account's email verified without any mail. An escape hatch since fountain ADR 0011 (accounts self-verify at registration under `emailDelivery=none`): needed only on pins ≤ v0.4.0 — where skipping it bounced every authenticated page back to the login form with nothing on screen saying why — or when a real mail provider is broken |
+| `promote-admin EMAIL` | Grants an account the admin role, audit-recorded as `admin.role.granted`. The manual path: with the default `firstUserAdmin=true` the first verified account is promoted in-app (fountain ADR 0011) and this reports it already admin. Already-an-admin is success. There is no revoke target — that is done from the panel, by an admin |
 
 Both report a missing account as a failure with the register-first instruction,
 rather than trusting the exit code: the release task prints its complaint and

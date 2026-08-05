@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, pgImage, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -183,6 +183,10 @@ export const deployment = new Deployment({
               // An instance on the public internet with registration open will
               // be found. Close it once you have your account.
               { name: "REGISTRATION_ENABLED", value: registrationEnabled },
+              // First verified account becomes the admin while none exists
+              // (fountain ADR 0011) — register before exposing the instance.
+              // Images ≤ v0.4.0 ignore this; see params.ts.
+              { name: "FIRST_USER_ADMIN", value: firstUserAdmin },
               // Defaults from the seam and is settable — a referenced Postgres
               // that serves no TLS is an ordinary thing and used to be
               // unexpressible. See params.ts.

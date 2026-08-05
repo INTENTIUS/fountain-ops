@@ -27,6 +27,7 @@ flags.
 | `scheme` | `http` · `https` | `http` | `https` turns on fountain's redirect, HSTS and secure cookies, so whatever terminates TLS must set `X-Forwarded-Proto` |
 | `emailDelivery` | `none` · `resend` · `smtp` | `none` | fountain does not boot without a mail decision; `none` is a decision |
 | `registrationEnabled` | `true` · `false` | `true` | Sets `REGISTRATION_ENABLED` |
+| `firstUserAdmin` | `true` · `false` | `true` | Sets `FIRST_USER_ADMIN` (fountain ADR 0011): the first verified account on an instance with no admin is promoted, audit-recorded. Ignored by images ≤ v0.4.0. `false` keeps the manual `just promote-admin` path |
 | `databaseSsl` | `true` · `false` | derived from the `postgres` seam | `false` for `bundled`, `true` otherwise — see below |
 | `otelTraces` | `none` · `otlp` | `none` | `otlp` hands export back to the standard `OTEL_EXPORTER_OTLP_*` variables, which this repo does not model |
 

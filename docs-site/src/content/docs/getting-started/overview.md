@@ -8,11 +8,34 @@ Self-hosted [fountain](https://github.com/BinaryBourbon/fountain), deployed by
 
 You drive it by its `just` targets. You do not need to know chant to use it.
 
+## Targets, tiers, seams
+
+Three words carry the whole repo.
+
+A **target** is where the substrate runs: `k3d` for [the local
+loop](/fountain-ops/getting-started/stand-it-up/), `kubernetes` for [a cluster
+k3d did not create](/fountain-ops/getting-started/real-cluster/). A **tier** is
+how durable the deployment is: `light` is a smaller fountain, `ha` a more
+survivable one, and neither changes what the app can do. Separate questions —
+a tier does not imply a target.
+
+A **seam** is a dependency with a mode: who provides Postgres, who terminates
+TLS, where backups go. There are eight. The target picks defaults that are
+coherent on that substrate; setting one explicitly replaces exactly that seam
+and leaves the rest alone.
+
+Combinations that would apply cleanly to a cluster and then mean something
+other than they say — a "highly available" single Postgres, a certificate
+nothing terminates — are refused at build time, with an error naming the seam
+that fixes it. [Targets and
+tiers](/fountain-ops/reference/targets-and-tiers/) and
+[Seams](/fountain-ops/reference/seams/) are the full story.
+
 ## What you get
 
-One `light` deployment on k3d: the fountain server, a single-instance Postgres,
-a nightly backup job, and an emulated data plane. There is no ingress and no
-TLS; you reach it with `just forward`.
+The default build is one `light` deployment on `k3d`: the fountain server, a
+single-instance Postgres, a nightly backup job, and an emulated data plane.
+There is no ingress and no TLS; you reach it with `just forward`.
 
 The app boots, runs its migrations, and answers `/health/ready` with
 `{"status":"ok","checks":{"database":"ok"}}`. You can register, verify, and sign
@@ -42,15 +65,12 @@ src/
   observability/   ServiceMonitor, PrometheusRule
 ```
 
-## One environment variable
+## Every input is declared
 
 No resource file reads `process.env`. Every input is a declared build
 parameter, so the same parameters produce the same resources.
 
-The exception is `chant.config.ts`, which reads `FOUNTAIN_ENV` directly for
-`ownership.env`, because ownership is read when the config loads and build
-parameters do not exist yet at that point. So `--param env=prod` labels
-resources `prod` while the ownership marker still says `dev`, unless
-`FOUNTAIN_ENV` is set to match. Set both or neither.
-[INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396) tracks
-it.
+The one exception is `FOUNTAIN_ENV`, which has to agree with `--param env` or
+the ownership marker drifts from the resource labels. Why it exists, the
+exact drift, and the chant issue tracking it are in
+[Parameters](/fountain-ops/reference/parameters/).

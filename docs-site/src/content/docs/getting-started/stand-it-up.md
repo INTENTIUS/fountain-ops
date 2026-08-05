@@ -40,8 +40,8 @@ just forward      # http://localhost:4000
 ```
 
 `forward` holds the port open until you ctrl-c it, so the next step wants a
-second terminal. Registering and signing in needs one more step:
-[First login](/fountain-ops/getting-started/first-login/).
+second terminal. Then register and sign in — your first account self-verifies
+and becomes the admin: [First login](/fountain-ops/getting-started/first-login/).
 
 `up` takes build parameters through a `params` variable, as in
 `just params="--param postgres=cnpg" up`. What they are, and why a variable

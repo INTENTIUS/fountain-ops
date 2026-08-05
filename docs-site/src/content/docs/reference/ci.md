@@ -48,8 +48,8 @@ Stands up from nothing and asserts, in order:
 | the master key | re-running `just up` leaves `MASTER_SECRETS_KEY` byte-identical |
 | a clean start | the app's `restartCount` is 0, so the Postgres wait has not regressed |
 | the backup | taken, then restored into a throwaway and table-matched against live |
-| the account path | register over the API, `verify-email`, headless throughout |
-| the first-admin bootstrap | `promote-admin` grants the role, audit-recorded |
+| the account path | register over the API, verified (self-verified on pins past v0.4.0; `verify-email` is idempotent either way), headless throughout |
+| the first-admin bootstrap | the account ends up admin — in-app on pins past v0.4.0 (`promote-admin` reports it already admin), granted by the release task on older ones |
 | the conversation gate | the outcome matches the path taken, either way |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 

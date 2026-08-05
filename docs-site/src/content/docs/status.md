@@ -15,8 +15,8 @@ about.
 |---|---|
 | `target=k3d`, `tier=light` | Stood up, serves `/health/ready`, migrations ran |
 | Bundled Postgres | 23 tables, app connects |
-| Registering and signing in | Registered at `/auth/register`, `just verify-email`, reached `/onboarding/step_1` and `/conversations` |
-| Promoting an admin | `just promote-admin` grants the role through upstream's first-admin bootstrap (`promote_admin/1`), audit-recorded as `admin.role.granted`. The grant is e2e-asserted; the admin pages themselves have not been driven by anything here |
+| Registering and signing in | Registered at `/auth/register`, self-verified at registration (fountain ADR 0011; `just verify-email` remains the escape hatch), reached `/onboarding/step_1` and `/conversations` |
+| The first admin | The first verified account is promoted in-app (`FIRST_USER_ADMIN=true`, fountain ADR 0011), audit-recorded as `admin.role.granted`. E2e-asserted via `just promote-admin` reporting it already admin; the admin pages themselves have not been driven by anything here |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated with the fountain skill and a `/home/sprite/.env` written into its filesystem |
 | `pg-dump` → floci | **Taken and restored.** The CronJob dumps, uploads and size-verifies; `just restore-drill` restores the newest object into a throwaway database, matches its table count against live, and drops it. Non-destructive: the live database is untouched and only `fountain` remains afterwards |
 | `target=kubernetes` on k3d | **Applied and served.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. Not yet applied to a **managed** cluster ([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)) |

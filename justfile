@@ -492,13 +492,21 @@ e2e:
     just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
     echo "  ✓ registered and verified $email"
 
-    # The first-admin bootstrap, which was unreachable on v0.3.0 (#31): the
-    # release task landed upstream after that tag. Asserting the grant, not
-    # the admin pages — driving those needs a browser session this target
-    # does not have.
+    # The first-admin bootstrap. Two vintages are legitimate here:
+    #   - images after v0.4.0 (fountain ADR 0011): FIRST_USER_ADMIN=true in
+    #     the pod spec means the e2e account above — the instance's first
+    #     verified account — is already the admin, and promote-admin reports
+    #     "was already an admin". That report IS the assertion that the
+    #     in-app bootstrap fired.
+    #   - v0.4.0 and earlier ignore the variable, so promote-admin performs
+    #     the grant itself ("is an admin").
+    # Either way the account must end up admin; a "no account" or error path
+    # still fails. Asserting the grant, not the admin pages — driving those
+    # needs a browser session this target does not have.
     step "the first-admin bootstrap"
-    just promote-admin "$email" | grep -q "is an admin" || fail "promote-admin did not grant the role"
-    echo "  ✓ $email granted admin, audit-recorded"
+    just promote-admin "$email" | grep -qE "is an admin|already an admin" \
+      || fail "the account was not admin after promote-admin — neither the in-app bootstrap nor the release task granted it"
+    echo "  ✓ $email is admin, audit-recorded"
 
     # The conversation gate, asserted as the pairing rather than a result.
     #
@@ -563,20 +571,20 @@ forward: _require-cluster
 
 # ── first login ────────────────────────────────────────────────────────────
 
-# Mark an account's email verified, so it can actually use the instance.
+# Mark an account's email verified, without any mail being sent.
 #
-# This deployment sends no mail. emailDelivery defaults to "none" because
-# without Resend's DNS records mail is silently discarded, so the verification
-# link a signup asks you to click never arrives and cannot.
+# This deployment sends no mail — emailDelivery defaults to "none" because
+# without Resend's DNS records mail is silently discarded. On images after
+# v0.4.0 (fountain ADR 0011) that mode self-verifies accounts at registration,
+# so first login needs no target at all and this one is idempotent when run
+# anyway. It stays for two cases: accounts that predate the pin carrying ADR
+# 0011, and an instance whose real mail provider (resend/smtp) is broken.
 #
-# What that looks like without this target is not an error. Signing in appears
-# to work — the POST returns a redirect to /onboarding/step_1 — and then every
-# authenticated page bounces straight back to /auth/login. A loop, with nothing
-# on screen saying why. Verified, the same account reaches onboarding and
-# /conversations.
-#
-# So: register at /auth/register first, then run this with the same address.
-[doc("Mark an account's email verified, so it can actually use the instance.")]
+# On v0.4.0 and earlier this target was mandatory, and skipping it did not
+# look like an error: signing in appeared to work — the POST returned a
+# redirect to /onboarding/step_1 — and then every authenticated page bounced
+# straight back to /auth/login, with nothing on screen saying why.
+[doc("Mark an account's email verified, without any mail being sent.")]
 verify-email EMAIL: _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
@@ -637,15 +645,21 @@ verify-email EMAIL: _require-cluster
 
 # Grant an account the admin role, so /admin stops bouncing it to /dashboard.
 #
-# Upstream's first-admin bootstrap (fountain#275, in the pin since v0.4.0 —
-# #31 tracked waiting for it). Before it, both upstream deploy guides ended in
-# raw SQL against the production database. The grant is audit-recorded as
-# `admin.role.granted` with a nil actor, so a promotion made this way is as
-# visible in the admin audit trail as one made from the panel. Revoking has no
-# release task on purpose — that is done from the panel, by an admin.
+# On images after v0.4.0, first login does not need this: FIRST_USER_ADMIN=true
+# in the pod spec (fountain ADR 0011) promotes the instance's first verified
+# account in-app, and running this against it reports "was already an admin".
+# It stays for the manual path (firstUserAdmin=false), for promoting a *second*
+# admin without opening the panel, and for lock-out recovery.
 #
-# Needs a registered account: register first, `just verify-email` to make it
-# usable, then this.
+# History: upstream's release-task bootstrap (fountain#275, in the pin since
+# v0.4.0 — #31 tracked waiting for it) replaced the raw SQL both upstream
+# deploy guides used to end in; ADR 0011 moved first-admin in-app. The grant
+# is audit-recorded as `admin.role.granted` with a nil actor either way, so a
+# promotion made here is as visible in the admin audit trail as one made from
+# the panel. Revoking has no release task on purpose — that is done from the
+# panel, by an admin.
+#
+# Needs a registered, verified account.
 [doc("Grant an account the admin role, audit-recorded.")]
 promote-admin EMAIL: _require-cluster
     #!/usr/bin/env bash

@@ -277,11 +277,11 @@ The second one is the interesting one. `/health` says the release booted;
 Ingress rather than a port-forward is what proves the class, the rule and the
 controller agree. That specific check is what the k3d stand-in run asserted.
 
-Then the account path — registration, verification, admin — at your host
-instead of `localhost:4000`:
-[First login](/fountain-ops/getting-started/first-login/). Both recipes lift
-their pod spec from the live Deployment, so they carry over to any cluster
-unchanged.
+Then the account path at your host instead of `localhost:4000` — register and
+you have a verified admin account:
+[First login](/fountain-ops/getting-started/first-login/). The escape-hatch
+recipes (`verify-email`, `promote-admin`) lift their pod spec from the live
+Deployment, so they carry over to any cluster unchanged.
 
 ```bash
 export FOUNTAIN_PASSWORD=...        # not on the command line

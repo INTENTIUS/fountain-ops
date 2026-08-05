@@ -125,7 +125,7 @@ export default {
     // X-Forwarded-Proto or every request looks like http and redirect-loops.
     host: { type: "string", default: "localhost:4000" },
     scheme: { type: "string", enum: ["http", "https"], default: "http" },
-    image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.4.0" },
+    image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.4.1" },
 
     // ── the two axes ──────────────────────────────────────────────────────
     // Separate questions, and not a free grid: k3d + ha is refused, because
@@ -199,6 +199,9 @@ export default {
     // fountain refuses to boot without a mail decision — see src/app/deployment.ts.
     emailDelivery: { type: "string", enum: ["none", "resend", "smtp"], default: "none" },
     registrationEnabled: { type: "string", enum: ["true", "false"], default: "true" },
+    // In-app first-admin bootstrap (fountain ADR 0011): first verified account
+    // is promoted while no admin exists. Ignored by images ≤ v0.4.0.
+    firstUserAdmin: { type: "string", enum: ["true", "false"], default: "true" },
     // Unset derives from the postgres seam: false for the bundled one, which
     // serves no TLS, true otherwise. Settable because "otherwise" includes a
     // referenced Postgres that does not serve TLS either, and assuming it did

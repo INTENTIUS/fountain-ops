@@ -32,21 +32,9 @@ Then `just forward` and open `http://localhost:4000`. `just down` removes everyt
 
 ### First login
 
-A deploy that serves `/health` is not yet an instance you can use. Register at `/auth/register` — or `POST /api/auth/register`, if you are not driving a browser — then:
+Register at `/auth/register` — or `POST /api/auth/register`, if you are not driving a browser — and sign in. That is the whole step: with this deployment's defaults your account self-verifies at registration (no mail is sent here, so a verification link would never arrive), and the instance's first account is promoted to admin, audit-recorded like a grant made from the panel (fountain ADR 0011). Register before exposing the instance — until an admin exists, the role goes to whoever verifies first. [Why, and the escape hatches](https://intentius.io/fountain-ops/getting-started/first-login/).
 
-```bash
-just verify-email you@example.com
-```
-
-Skip it and nothing tells you: signing in *looks* like it worked, and then every page sends you back to the login form with no message. This deployment sends no mail, so the verification link never arrives and cannot. [Why, and what it does](https://intentius.io/fountain-ops/getting-started/first-login/).
-
-The first admin is minted the same way — a fresh instance has none, and no page offers to create one:
-
-```bash
-just promote-admin you@example.com
-```
-
-That runs upstream's first-admin bootstrap against a verified, registered account, and `/admin` answers for it from then on. The grant is audit-recorded like one made from the panel. You do not need admin to use the instance.
+`just verify-email` and `just promote-admin` remain for older image pins (≤ v0.4.0, which ignore these switches), broken mail providers, second admins, and `firstUserAdmin=false`. You do not need admin to use the instance.
 
 ### When it goes wrong
 
@@ -78,7 +66,7 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 
 | | |
 |---|---|
-| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, verify, sign in and mint the first admin; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
+| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, sign in and end up with the first admin; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
 | **Does not work** | Completing a turn — sometimes, and it is a race that a faster machine loses more often ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67), [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)) |
 | **Builds only** | `target=kubernetes` and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
 

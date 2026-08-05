@@ -17,7 +17,7 @@ import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } 
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
-export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.4.0";
+export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.4.1";
 
 /**
  * The externally-visible authority, port included where there is one.
@@ -129,6 +129,16 @@ export const databaseSsl =
   (params.databaseSsl as string | undefined) ?? (seams.postgres === "bundled" ? "false" : "true");
 
 export const registrationEnabled = (params.registrationEnabled as string | undefined) ?? "true";
+/**
+ * Upstream's in-app first-admin bootstrap (fountain ADR 0011, in releases
+ * after v0.4.0; earlier images ignore the variable): while the instance has
+ * no admin, the first account to become verified is promoted, audit-recorded.
+ * On by default here for the same reason upstream's compose file defaults it
+ * on — this repo stands up single-operator instances, and the operator
+ * registering first *is* the first login. Set "false" to keep the manual
+ * `just promote-admin` path instead.
+ */
+export const firstUserAdmin = (params.firstUserAdmin as string | undefined) ?? "true";
 export const clusterIssuer = (params.clusterIssuer as string | undefined) ?? "letsencrypt-production";
 export const ingressClassName = params.ingressClassName as string | undefined;
 assertIngressClass(seams, ingressClassName);

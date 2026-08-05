@@ -40,13 +40,34 @@ just forward      # http://localhost:4000
 ```
 
 `forward` holds the port open until you ctrl-c it, so the next step wants a
-second terminal. Then register and sign in — your first account self-verifies
-and becomes the admin: [First login](/fountain-ops/getting-started/first-login/).
+second terminal.
 
 `up` takes build parameters through a `params` variable, as in
 `just params="--param postgres=cnpg" up`. What they are, and why a variable
 rather than an argument, is in
 [Parameters](/fountain-ops/reference/parameters/).
+
+## First login
+
+Register at `http://localhost:4000/auth/register` and sign in. That is the
+whole step: with this deployment's defaults your account self-verifies at
+registration — `emailDelivery=none` means no mail is sent here, so a
+verification link would never arrive and gates nothing — and the instance's
+first account is promoted to admin in-app, audit-recorded like a grant made
+from the panel (fountain ADR 0011, both halves).
+
+Register **before** exposing the instance to a network you don't trust —
+until an admin exists, the role goes to whoever verifies first. Registration
+is open by default for the same reason; close it with
+`registrationEnabled=false` once your account exists. You do not need admin
+to use the instance.
+
+Scripts and agents register through `POST /api/auth/register`, which does the
+same thing; that curl, and the API key the conversation gate authenticates
+with, are in [The data plane](/fountain-ops/reference/data-plane/#an-account-and-a-key-headless).
+For a second admin, `firstUserAdmin=false`, an older image pin or a lock-out,
+the manual path is
+[Promoting an admin manually](/fountain-ops/reference/promote-admin/).
 
 ## Down
 

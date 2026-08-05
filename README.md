@@ -5,7 +5,6 @@ Self-hosted [fountain](https://github.com/BinaryBourbon/fountain), deployed by [
 You drive this by its `just` targets. You do not need to know chant to use it.
 
 **Docs:** [Stand it up](https://intentius.io/fountain-ops/getting-started/stand-it-up/) ·
-[First login](https://intentius.io/fountain-ops/getting-started/first-login/) ·
 [Seams](https://intentius.io/fountain-ops/reference/seams/) ·
 [Status](https://intentius.io/fountain-ops/status/)
 
@@ -32,9 +31,9 @@ Then `just forward` and open `http://localhost:4000`. `just down` removes everyt
 
 ### First login
 
-Register at `/auth/register` — or `POST /api/auth/register`, if you are not driving a browser — and sign in. That is the whole step: with this deployment's defaults your account self-verifies at registration (no mail is sent here, so a verification link would never arrive), and the instance's first account is promoted to admin, audit-recorded like a grant made from the panel (fountain ADR 0011). Register before exposing the instance — until an admin exists, the role goes to whoever verifies first. [Why, and the escape hatches](https://intentius.io/fountain-ops/getting-started/first-login/).
+Register at `/auth/register` — or `POST /api/auth/register`, if you are not driving a browser — and sign in. That is the whole step: with this deployment's defaults your account self-verifies at registration (no mail is sent here, so a verification link would never arrive), and the instance's first account is promoted to admin, audit-recorded like a grant made from the panel (fountain ADR 0011). Register before exposing the instance — until an admin exists, the role goes to whoever verifies first.
 
-`just verify-email` and `just promote-admin` remain for older image pins (≤ v0.4.0, which ignore these switches), broken mail providers, second admins, and `firstUserAdmin=false`. You do not need admin to use the instance.
+`just verify-email` and `just promote-admin` remain for older image pins (≤ v0.4.0, which ignore these switches), broken mail providers, second admins, and `firstUserAdmin=false`: [Promoting an admin manually](https://intentius.io/fountain-ops/reference/promote-admin/) has them, and what runs underneath. You do not need admin to use the instance.
 
 ### When it goes wrong
 

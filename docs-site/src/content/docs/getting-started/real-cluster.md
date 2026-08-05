@@ -278,10 +278,14 @@ Ingress rather than a port-forward is what proves the class, the rule and the
 controller agree. That specific check is what the k3d stand-in run asserted.
 
 Then the account path at your host instead of `localhost:4000` — register and
-you have a verified admin account:
-[First login](/fountain-ops/getting-started/first-login/). The escape-hatch
+you have a verified admin account, exactly as
+[on a laptop](/fountain-ops/getting-started/stand-it-up/#first-login). Register
+**before** the instance is exposed: until an admin exists, the role goes to
+whoever verifies first, and on this target that window is public. The manual
 recipes (`verify-email`, `promote-admin`) lift their pod spec from the live
-Deployment, so they carry over to any cluster unchanged.
+Deployment, so they carry over to any cluster unchanged —
+[Promoting an admin manually](/fountain-ops/reference/promote-admin/) has
+them, including the raw `kubectl` shape for a machine without the justfile.
 
 ```bash
 export FOUNTAIN_PASSWORD=...        # not on the command line

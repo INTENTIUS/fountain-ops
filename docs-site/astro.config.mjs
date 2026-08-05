@@ -27,6 +27,7 @@ export default defineConfig({
 						{ label: 'What this is', slug: 'getting-started/overview' },
 						{ label: 'Stand it up', slug: 'getting-started/stand-it-up' },
 						{ label: 'First login', slug: 'getting-started/first-login' },
+						{ label: 'Deploy to a real cluster', slug: 'getting-started/real-cluster' },
 					],
 				},
 				{
@@ -34,9 +35,13 @@ export default defineConfig({
 					items: [
 						{ label: 'Targets and tiers', slug: 'reference/targets-and-tiers' },
 						{ label: 'Seams', slug: 'reference/seams' },
+						{ label: 'Build parameters', slug: 'reference/parameters' },
 						{ label: 'The data plane', slug: 'reference/data-plane' },
+						{ label: 'Backups and restore', slug: 'reference/backups' },
 						{ label: 'Secrets', slug: 'reference/secrets' },
+						{ label: 'The just targets', slug: 'reference/commands' },
 						{ label: 'CI and the site', slug: 'reference/ci' },
+						{ label: 'Operating from behold', slug: 'reference/behold' },
 					],
 				},
 				{ label: 'Status', slug: 'status' },

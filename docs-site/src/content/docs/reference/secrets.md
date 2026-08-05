@@ -97,44 +97,9 @@ script's command substitution are all places a secret should not appear by
 accident.
 :::
 
-## The restore drill
-
-```bash
-just restore-drill
-```
-
-The backup job says "Backup complete" when an object of the right size lands
-in the store. That verifies the **upload**, not the dump: a corrupt dump of
-the right size uploads cleanly, and you find out during the outage.
-
-The drill restores the newest object into a throwaway database, counts the
-tables against the live one, and drops the throwaway whether it passed or
-failed. Nothing writes to the live database at any point.
-
-```
-  store:       http://fountain-floci.fountain.svc.cluster.local:4566 / fountain-backups
-  throwaway:   fountain_drill_1785796929
-  live tables: 23
-  DRILL_KEY=pg_dump/fountain-2026-08-03T22-42-05Z.dump
-  DRILL_RESTORED_TABLES=23
-  ✓ restored 23 tables, matched live, threw the copy away
-```
-
-It compares against the live count rather than a number written here, because
-a hardcoded 23 would pass a restore of last month's schema.
-
-**A drill that cannot verify is a failing finding on the backup, not on the
-drill.** The exit code and the message both say so:
-
-```
-  ✗ the latest backup did not restore.
-    That is a finding on the backup, not on the drill.
-
-    no backup object under pg_dump/ in fountain-backups
-```
-
-It also says what it did not prove: the restored rows are ciphertext without
-the master key above.
+`just restore-drill` proves the newest backup reads back, and ends by saying
+what it did not prove: the restored rows are ciphertext without the master key
+above. [Backups and restore](/fountain-ops/reference/backups/) has the drill.
 
 ## No value is in this repo
 

@@ -96,6 +96,20 @@ export default {
       // to its work volume. A read-only root filesystem is right for the app
       // tier, which has one, and wrong for these two.
       WK8203: "off",
+      // Four components compose the same shape: one phase, one shell step.
+      // COMP007 reads that as copy-paste sprawl and suggests a preset, which
+      // is the right hint in general and wrong here. The estate applies as a
+      // single `kubectl apply`, so the only per-component deploy-time claim
+      // left is "did this one come up", and for Postgres, the S3 emulator and
+      // the sandbox API that is the same operation against a different
+      // Deployment. The shape is shared because the fact is shared. The
+      // source repetition the rule is really aimed at is gone -- one
+      // `rolloutReady` helper builds all three (src/fountain.component.ts).
+      //
+      // Reach for a preset the day a component grows a real composition:
+      // build, publish, apply, verify. Until then this would be a preset with
+      // one step in it.
+      COMP007: "off",
       // A CPU limit throttles rather than protects: under contention the
       // database gets slower instead of shedding load, and a stalled dump is a
       // missing backup. Requests are set; limits are deliberate omissions.

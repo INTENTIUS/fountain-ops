@@ -16,7 +16,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'fountain-ops',
-			description: 'Self-hosted fountain, deployed by chant. Targets, tiers and seams, no shell.',
+			description: 'Deploy fountain yourself. One command on a laptop, a short path to durable, and the same build aimed at a real cluster.',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/INTENTIUS/fountain-ops' },
 			],

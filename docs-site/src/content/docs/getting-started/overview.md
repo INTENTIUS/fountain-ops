@@ -34,7 +34,7 @@ database; `ha` is two clustered app replicas over a replicated database.
 | real cluster, `light` | build, dry-run, apply — [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/) |
 | real cluster, `ha` | the same page; `ha` is the default it previews |
 
-Not every corner cuts every way: the laptop defaults are emulators, and `ha`
+Not every pair is a free choice: the laptop defaults are emulators, and `ha`
 refuses to stand on an emulator. When a combination is refused, the error
 names the parameter that fixes it — [Make it
 durable](/fountain-ops/getting-started/make-it-durable/) walks through the

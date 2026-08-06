@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, cnpgImage, labels } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -74,25 +74,32 @@ const databaseUrl =
  * consulted, and `kubectl rollout status` reads the end state without caring
  * how many attempts it took to get there.
  *
- * Only for `bundled`, and the other two are not oversights:
+ * For `bundled` and `cnpg` both; only `reference` goes without, and that is
+ * not an oversight:
  *
- *   cnpg       the app reads its URL from `fountain-pg-app`, a Secret the
- *              operator creates when it bootstraps the cluster. Until then the
- *              pod cannot start at all — it sits in CreateContainerConfigError
- *              and retries, which is already a wait, and one that reports the
- *              missing thing by name.
+ *   cnpg       first shipped without the wait, reasoning that the pod cannot
+ *              start until `fountain-pg-app` exists — a Secret the operator
+ *              creates when it bootstraps the cluster — and that
+ *              CreateContainerConfigError is already a wait. It is, but for
+ *              the wrong moment: the operator writes the Secret well before
+ *              the primary accepts connections, so the app started into the
+ *              gap and restarted two or three times per replica on every
+ *              first boot. Observed standing `k3d`+`ha` up from nothing; the
+ *              probe below against `fountain-pg-rw` is what closed it.
  *   reference  the database is somebody else's and presumed up. There is
  *              nothing to probe either: the host is inside DATABASE_URL, which
  *              is a Secret and not a build-time value.
  */
+const pgWaitHost = seams.postgres === "cnpg" ? "fountain-pg-rw" : "fountain-postgres";
 const waitForPostgres =
-  seams.postgres === "bundled"
+  seams.postgres === "bundled" || seams.postgres === "cnpg"
     ? [
         new Container({
           name: "wait-for-postgres",
-          // The image the bundled Postgres already pulls, so this costs no
-          // extra pull — and pg_isready is the tool that ships in it.
-          image: pgImage,
+          // The image the database already pulls — postgres for bundled, the
+          // CNPG build of it for cnpg — so this costs no extra pull, and
+          // pg_isready is the tool that ships in both.
+          image: seams.postgres === "cnpg" ? cnpgImage : pgImage,
           imagePullPolicy: "IfNotPresent",
           command: ["/bin/sh", "-c"],
           // `-U fountain` is load-bearing and not a stylistic echo of the
@@ -109,14 +116,14 @@ const waitForPostgres =
           args: [
             `set -eu
 for i in $(seq 1 180); do
-  if pg_isready -q -U fountain -h fountain-postgres -p 5432; then
+  if pg_isready -q -U fountain -h ${pgWaitHost} -p 5432; then
     echo "postgres is accepting connections"
     exit 0
   fi
   sleep 1
 done
 echo "postgres did not accept connections within 180s" >&2
-echo "check:  kubectl logs -n ${namespace} deployment/fountain-postgres" >&2
+echo "check:  ${seams.postgres === "cnpg" ? `kubectl get cluster.postgresql.cnpg.io -n ${namespace} fountain-pg` : `kubectl logs -n ${namespace} deployment/fountain-postgres`}" >&2
 exit 1`,
           ],
           // This is correct and complete, and `chant build` reports it as

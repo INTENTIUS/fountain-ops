@@ -111,7 +111,7 @@ beforehand and leaves none behind on success.
 |---|---|
 | `build` | Renders the manifests to `dist/fountain.yaml`. Honours `params` |
 | `apply` | `build`, then `kubectl apply -f dist/fountain.yaml` |
-| `wait` | Waits for both rollouts: 120s for Postgres, 300s for the app, which migrates at boot |
+| `wait` | Waits for whichever database the applied seam produced — the bundled Deployment (120s) or the CNPG `Cluster` (300s), skipped entirely for `postgres=reference` — then 300s for the app, which migrates at boot |
 | `check` | `typecheck`, `lint`, `test`, `build`. Touches no cluster, and is deliberately the same chain CI's check job runs |
 | `typecheck` | `tsc --noEmit`. Its own step because `chant build` executes the source, so a property that does not exist reads as `undefined` instead of failing |
 | `lint` | `chant lint src` |

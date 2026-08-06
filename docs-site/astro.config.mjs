@@ -30,8 +30,9 @@ export default defineConfig({
 				{
 					label: 'Getting started',
 					items: [
-						{ label: 'What this is', slug: 'getting-started/overview' },
+						{ label: 'What you are deploying', slug: 'getting-started/overview' },
 						{ label: 'Stand it up locally', slug: 'getting-started/stand-it-up' },
+						{ label: 'Make it durable', slug: 'getting-started/make-it-durable' },
 						{ label: 'Stand it up on a real cluster', slug: 'getting-started/real-cluster' },
 					],
 				},
@@ -48,6 +49,7 @@ export default defineConfig({
 						{ label: 'The just targets', slug: 'reference/commands' },
 						{ label: 'CI and the site', slug: 'reference/ci' },
 						{ label: 'Operating from behold', slug: 'reference/behold' },
+						{ label: 'The repo', slug: 'reference/repo-layout' },
 					],
 				},
 				{ label: 'Status', slug: 'status' },

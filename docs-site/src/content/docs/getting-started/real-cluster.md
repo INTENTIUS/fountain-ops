@@ -1,32 +1,25 @@
 ---
 title: Stand it up on a real cluster
-description: The order of operations for target=kubernetes, and which of its steps nothing here has ever run.
+description: The order of operations for target=kubernetes — what you need, the decisions in order, and the commands.
 ---
 
 This is the same build as the laptop loop, aimed at a cluster k3d did not
-create. [Targets and tiers](/fountain-ops/reference/targets-and-tiers/) explains
-why the `kubernetes` defaults are what they are; this page is what to do, in
-what order.
+create. What changes is who provides the pieces: the laptop loop mints and
+emulates everything, and here the database, the Secret, the ingress class and
+the hostname are yours to bring.
 
-## What has actually been run
+## What you need
 
-[Status](/fountain-ops/status/) is authoritative and wins any disagreement with
-this page. Its short version, for this path:
+- **A cluster and a kubectl context** that reaches it. Any Kubernetes; the
+  ingress and TLS decisions below adapt to what it runs.
+- **A Postgres** — managed, or run by someone in the cluster — *or* the CNPG
+  operator, if this deployment should run its own.
+- **An ingress class** the cluster answers to: `kubectl get ingressclass`.
+- **A hostname** that resolves to that ingress.
+- **A place the platform Secret comes from** — created by hand, synced from
+  this repo with sops, or reconciled by an operator.
 
-| | |
-|---|---|
-| `target=kubernetes`, applied and served | **On a k3d cluster standing in for a real one.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. `just e2e-k8s` re-checks this on a three-node stand-in with Traefik as the class |
-| `kubernetes` + `ha`, applied and served | **On the same stand-in.** Two replicas across nodes, Erlang-clustered through the headless Service, PDB applied, served through the Ingress — `just e2e-k8s` runs it after `light`, so the in-place upgrade is the tested path |
-| A managed cluster — EKS, GKE, AKS | **Never.** [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
-| `tls=cert-manager` | cert-manager installs and is Available. **No certificate has been issued**, here or anywhere |
-| `secrets=infisical` | Builds, and a real API server accepts it. No operator has reconciled it |
-| `backups=barman-pitr` | The `ObjectStore` and `ScheduledBackup` apply. **No backup has been taken through it** |
-| A real `SPRITES_TOKEN` | Never used. Every conversation this repo has run went to the emulator |
-
-So the substrate path — build, apply, serve, reach it through an Ingress — has
-been exercised end to end against a Kubernetes API server, and four of the
-things you probably want on a real cluster have not. Each step below says which
-side of that line it is on.
+Each of those is one decision below, and each decision is one `--param`.
 
 ## Preview first
 
@@ -36,12 +29,16 @@ just preview kubernetes ha
 
 Prints the manifests and touches no cluster. `preview` takes target, tier and
 ingress class positionally and already defaults to `kubernetes ha nginx`, so
-bare `just preview` is the same command.
+bare `just preview` is the same command. It is the fastest way to see what a
+set of decisions produces before any of them are yours to keep.
 
-`kubernetes` + `ha` builds; `k3d` + `ha` is refused, and the difference is
-entirely in the seam defaults. `just e2e-k8s` has applied `kubernetes` + `ha`
-to a three-node stand-in and served it through an Ingress; no one has applied
-it to a cluster k3d did not create.
+How much of this path has been exercised, and where the verified ground
+stops, is [Status](/fountain-ops/status/)'s job — the short version is that
+`light` and `ha` both apply and serve on a multi-node stand-in
+(`just e2e-k8s` re-checks that), no managed cluster has ever been used
+([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)), and the steps
+below call out the four things that have never run anywhere as you reach
+them.
 
 ## The foreign-cluster guard
 
@@ -252,9 +249,9 @@ different question, and the one that catches a field chant will serialize
 happily and the cluster rejects. For seams with custom resources it needs their
 schemas, which is `just crds`.
 
-`just wait` is the one recipe that does not carry over: it waits for
-`deployment/fountain-postgres`, which `postgres=reference` never creates. Wait
-for the app directly.
+`just wait` waits for whichever database is actually in the cluster — the
+bundled Deployment, or the CNPG `Cluster` — and skips straight to the app for
+a referenced Postgres, which is not its to wait for. The equivalent by hand:
 
 ```bash
 kubectl rollout status deployment/fountain -n fountain --timeout=300s

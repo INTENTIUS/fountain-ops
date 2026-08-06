@@ -3,12 +3,12 @@
 # "fountain-ops" too produced "fountain-ops | fountain-ops" in the tab and in
 # every search result. The hero keeps the short name; the page title carries
 # what the project actually is.
-title: Self-hosted fountain, deployed by chant
-description: Self-hosted fountain, deployed by chant. Targets, tiers and seams, no shell.
+title: Run your own fountain
+description: Deploy fountain yourself. One command on a laptop, a short path to durable, and the same build aimed at a real cluster.
 template: splash
 hero:
   title: fountain-ops
-  tagline: Self-hosted fountain, deployed by chant. Two targets, two tiers, eight seams, and a status table that says what is actually verified.
+  tagline: Deploy fountain yourself. One command on a laptop, a short path from there to durable, and the same build aimed at a real cluster.
   actions:
     - text: Stand it up
       link: /fountain-ops/getting-started/stand-it-up/
@@ -34,46 +34,45 @@ self-verifies, and the instance's first account is
 [the admin](/fountain-ops/getting-started/stand-it-up/#first-login).
 
 <CardGrid stagger>
-  <Card title="Two axes, not a grid" icon="setting">
-    **Target** is where the substrate runs. **Tier** is how durable it is.
-    Separate questions. Combinations that would build green and mean something
-    other than they say are refused, with an error naming the seam that fixes
-    it.
+  <Card title="On a laptop" icon="laptop">
+    [Stand it up locally](/fountain-ops/getting-started/stand-it-up/): one
+    command, a local cluster, an emulated data plane. Register and you are the
+    admin.
   </Card>
-  <Card title="Eight seams" icon="puzzle">
-    `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`,
-    `dataPlane`, `storage`. Each is a dependency with a mode. The target picks
-    defaults coherent on that substrate; setting one replaces exactly that
-    seam.
+  <Card title="Durable" icon="setting">
+    [Make it durable](/fountain-ops/getting-started/make-it-durable/): two app
+    replicas that stay one instance, over a replicated Postgres — still on the
+    laptop, so you can practice the shape before you need it.
   </Card>
-  <Card title="Offline data plane" icon="laptop">
-    `dataPlane=spritzer` points fountain at an emulator in the cluster. The app
-    is not built differently and cannot tell, so a local run exercises the real
-    control-plane path rather than a stub.
+  <Card title="On a real cluster" icon="rocket">
+    [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/):
+    the same build, aimed at a cluster this repo did not create. Your database,
+    your ingress class, your Secret.
   </Card>
-  <Card title="A status table that says no" icon="approve-check">
-    Most rows do not say "works". They say **Builds only**, or **Emitted, never
-    run**, or name the issue that blocks them.
+  <Card title="What is verified" icon="approve-check">
+    [Status](/fountain-ops/status/) says which of these paths has actually
+    been run, and prefers **Builds only** to a word that sounds better. It wins
+    any disagreement with the rest of the docs.
   </Card>
 </CardGrid>
 
 ## What you drive it with
 
-`just` targets. You do not need to know chant to use this, and no resource file
-reads `process.env`: every input is a declared build parameter, so the same
-parameters produce the same resources.
+`just` targets, and nothing else. The manifests are compiled from TypeScript
+by [chant](https://intentius.io/chant), but every command you need is a `just`
+target — you can deploy, operate and tear this down without learning what
+chant is.
 
 ```bash
 just status       # everything in the namespace
 just logs         # the app, following
-just preview kubernetes ha         # see another target without applying anything
+just preview kubernetes ha         # see another shape without applying anything
 just down         # remove everything it created, and nothing it did not
 ```
 
 ## Where to go next
 
-- [What this is](/fountain-ops/getting-started/overview/) — the shape of the repo
-- [Targets and tiers](/fountain-ops/reference/targets-and-tiers/) — the two axes and what is refused
-- [Build parameters](/fountain-ops/reference/parameters/) — every input, every default, in one table
-- [The data plane](/fountain-ops/reference/data-plane/) — what a local conversation proves
+- [What you are deploying](/fountain-ops/getting-started/overview/) — the pieces, the four shapes, and the four words the docs lean on
+- [Make it durable](/fountain-ops/getting-started/make-it-durable/) — `tier=ha`, on the laptop first
+- [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/) — the decisions in order
 - [Status](/fountain-ops/status/) — what is verified today; read it before believing anything else

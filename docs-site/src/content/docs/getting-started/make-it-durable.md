@@ -45,9 +45,11 @@ The errors are the documentation here: you can start from
 `just params="--param tier=ha" up` and let each refusal hand you the next
 parameter.
 
-First boot takes a little longer than `light`: the app pods start while CNPG
-is still bringing up the primary, restart once or twice against a database
-that is not there yet, and settle as soon as it is.
+First boot takes a little longer than `light`: the app pods wait for CNPG to
+bring the primary up before starting. On a brand-new database you may still
+see `RESTARTS 1` on one replica — both replicas race to create the
+migrations table, and the loser retries and wins. Once, on first boot, on an
+empty database; not a pattern to watch for after that.
 
 ## What you get
 
@@ -57,10 +59,10 @@ kubectl get pods -n fountain
 
 ```
 NAME                        READY   STATUS    RESTARTS   AGE
-fountain-6996f4fc85-8pzrl   1/1     Running   2          81s
-fountain-6996f4fc85-v7c6v   1/1     Running   3          81s
-fountain-pg-1               1/1     Running   0          65s
-fountain-pg-2               1/1     Running   0          27s
+fountain-6bb8986694-x4sm7   1/1     Running   1          97s
+fountain-6bb8986694-z89wk   1/1     Running   0          97s
+fountain-pg-1               1/1     Running   0          84s
+fountain-pg-2               1/1     Running   0          64s
 ```
 
 Two app replicas, and a two-instance Postgres named `fountain-pg`. The

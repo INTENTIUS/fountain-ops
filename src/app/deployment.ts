@@ -126,16 +126,6 @@ echo "postgres did not accept connections within 180s" >&2
 echo "check:  ${seams.postgres === "cnpg" ? `kubectl get cluster.postgresql.cnpg.io -n ${namespace} fountain-pg` : `kubectl logs -n ${namespace} deployment/fountain-postgres`}" >&2
 exit 1`,
           ],
-          // This is correct and complete, and `chant build` reports it as
-          // missing anyway: the k8s post-synth check does not read
-          // initContainers[].securityContext, so the warnings it prints for
-          // this container are identical whether this block is here or
-          // deleted. Verified by deleting it. INTENTIUS/chant#1482.
-          //
-          // Do not "fix" the warning by removing this. The emitted YAML is
-          // right; the checker is looking in the wrong place, and the advice
-          // it gives — "set it at container or pod level" — is unsatisfiable
-          // for capabilities, which has no pod-level form.
           securityContext: {
             runAsNonRoot: true,
             runAsUser: 1001,

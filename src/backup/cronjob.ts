@@ -96,6 +96,15 @@ echo "$OUT" > /work/latest`,
                     {
                       name: "upload",
                       image: "amazon/aws-cli:2.31.19",
+                      // Both were missing here and nothing said so: the "dump"
+                      // container above sits behind a block-scalar args, and
+                      // until chant 0.41.14 the post-synth parser lost every
+                      // container after one of those — so this container was
+                      // never checked at all (INTENTIUS/chant#1482). The fix
+                      // that made the checker see it again is what surfaced
+                      // these.
+                      imagePullPolicy: "IfNotPresent",
+                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false },
                       command: ["/bin/sh", "-c"],
                       args: [
                         `set -eu

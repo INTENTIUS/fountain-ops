@@ -555,20 +555,38 @@ e2e:
     # asserted. Which terminal shape the turn reached is reported, not
     # judged. The turn-outcome truth lives upstream until that work settles;
     # spritzer#18 and #67 hold the history.
-    step "the conversation gate: the plumbing asserted, the outcome observed"
+    # This asserted a result, then a pairing, then stopped keeping score — each
+    # time because the outcome was a race nobody could pin. It is not a race any
+    # more, so this goes back to asserting the thing that matters: the turn
+    # completes.
+    #
+    # What closed it was three fixes across two repos. fountain#603 stopped a
+    # lost stdin write from crashing the ConversationServer and orphaning the
+    # turn behind a reattach. spritzer#19 made an unupgraded GET on the exec
+    # path answer the session list instead of `426`. spritzer#20 — the one that
+    # actually ends the race — holds an unrecognised command's exec session open
+    # until stdin EOF, so fountain's prompt reaches a process that is still
+    # there. Measured at these pins: 34 conversations, 34 completed, including
+    # two batches fired back to back, which is the pacing that used to fail most.
+    #
+    # So `turn_orphaned` and `:command_exited` are both regressions now, not
+    # outcomes, and each names the pin that would have to have moved.
+    step "the conversation gate"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
     printf '%s' "$out" | grep -q 'provision' \
       || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
-    printf '%s' "$out" | grep -q "plumbing: sandbox provisioned\|turn_orphaned" \
-      || { echo "$out" | tail -20; fail "the conversation reached no terminal shape verify-conversation recognises"; }
     if printf '%s' "$out" | grep -q "turn_orphaned"; then
-      echo "  ✓ plumbing held; observed: reattach path, turn orphaned (spritzer#18) ($(uname -m))"
-    elif printf '%s' "$out" | grep -q "command_exited"; then
-      echo "  ✓ plumbing held; observed: fresh turn ended :command_exited ($(uname -m))"
-    else
-      echo "  ✓ plumbing held; observed: fresh turn completed — the echo, not a model ($(uname -m))"
+      echo "$out" | tail -20
+      fail "the turn was orphaned behind a reattach — fountain#603 or spritzer#19 regressed, or the pin rolled back"
     fi
+    if printf '%s' "$out" | grep -q "command_exited"; then
+      echo "$out" | tail -20
+      fail "the runtime exited before the prompt was written — spritzer#20 regressed, or spritzerImage rolled back below 0.5.0"
+    fi
+    printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
+      || { echo "$out" | tail -20; fail "the turn did not complete"; }
+    echo "  ✓ the turn completed, prompt echoed back — the echo, not a model"
 
     # Every seam that needs a CRD, against a real API server rather than
     # against our own expectations. No controllers, so nothing reconciles.
@@ -1035,32 +1053,20 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     fail() { echo "  ✗ $1" >&2; echo "$ev" | head -30 >&2; exit 1; }
     printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
     printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
-    # Against the emulator, how the turn ENDS is upstream's business, and it
-    # is being actively worked on — pinning the shape here cost a rewrite per
-    # fountain release (exit 0 on ≤ v0.5.x, :command_exited on v0.6.0, exit 0
-    # again on v0.6.1) while the goal upstream is turns that work. So at
-    # plane=spritzer this asserts that the turn reached a terminal shape at
-    # all, reports which, and only an ending this recipe cannot name fails.
-    # A real plane still has to exit 0 and stream output — there a turn that
-    # does not complete is somebody's incident, not somebody's
-    # work-in-progress.
+    # One assertion for both planes again: the turn exits 0 and streams output.
+    #
+    # This recipe spent three fountain releases refusing to pin the emulator's
+    # ending (exit 0 on ≤ v0.5.x, :command_exited on v0.6.0, exit 0 again on
+    # v0.6.1) because the ending was a race. spritzer 0.5.0 ends the race —
+    # #20 holds an unrecognised command's exec session open until stdin EOF, so
+    # the prompt lands on a live process instead of one that already exited.
+    # 34 of 34 conversations completed at these pins. A shape that is now
+    # deterministic is a shape worth asserting.
+    printf '%s' "$ev" | grep -q '"exit_code\\":0'   || fail "the turn did not exit 0"
+    printf '%s' "$ev" | grep -q 'event: output'     || fail "the turn produced no output at all"
+    echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
     if [ "$plane" = "spritzer" ]; then
-      if printf '%s' "$ev" | grep -q '"exit_code\\":0'; then
-        echo "  ✓ plumbing: sandbox provisioned, turn dispatched; ended: completed, exit 0"
-        echo "    (the echo, not a model reply)"
-      elif printf '%s' "$ev" | grep -q 'command_exited'; then
-        echo "  ✓ plumbing: sandbox provisioned, turn dispatched; ended: failed :command_exited"
-        echo "    (the emulator runtime exits before a prompt is written)"
-      elif printf '%s' "$ev" | grep -q 'turn_orphaned'; then
-        echo "  ✓ plumbing: sandbox provisioned, turn dispatched; ended: orphaned on reattach"
-        echo "    (spritzer#18 — list_sessions answered 426)"
-      else
-        fail "the turn ended in no shape this recipe can name — look at the events above"
-      fi
-    else
-      printf '%s' "$ev" | grep -q '"exit_code\\":0'   || fail "the turn did not exit 0"
-      printf '%s' "$ev" | grep -q 'event: output'     || fail "the turn produced no output at all"
-      echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
+      echo "    (the echo, not a model reply)"
     fi
 
     if [ "{{MODE}}" = "strict" ]; then

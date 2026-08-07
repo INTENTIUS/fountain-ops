@@ -50,35 +50,36 @@ Stands up from nothing and asserts, in order:
 | the backup | taken, then restored into a throwaway and table-matched against live |
 | the account path | register over the API, verified (self-verified on pins past v0.4.0; `verify-email` is idempotent either way), headless throughout |
 | the first-admin bootstrap | the account ends up admin — in-app on pins past v0.4.0 (`promote-admin` reports it already admin), granted by the release task on older ones |
-| the conversation gate | the outcome matches the path taken, either way |
+| the conversation gate | the turn completes and streams output, against the emulated data plane |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 
 Then it tears down. On failure it leaves the cluster up so there is something
 to look at; CI runs its own teardown regardless.
 
-:::caution[The conversation gate has two legitimate outcomes]
-Whether a turn completes is decided by a race, so neither result can be pinned.
-The pinned release branches on `sandbox.status`: `ready` reattaches, and
-reattach calls `list_sessions`, which spritzer answers `426`, orphaning the
-turn. `pending` or `starting` provisions fresh and the turn runs to
-`exit_code: 0`.
+:::caution[The conversation gate asserts a completed turn again]
+It has not always. Against older pins a turn against the emulator usually did
+not finish, and this gate retreated twice — first to asserting a *pairing*
+between the path taken and the outcome, then to only observing which ending it
+saw — because the outcome was a race nobody could pin.
 
-Machine speed decides which, so a faster machine sees the orphaned turn more
-often. Measured with identical image digests: 5 of 5 orphaned on a laptop, 2 of
-2 completed on a CI runner.
-[The data plane](/fountain-ops/reference/data-plane/) has the detail.
+`spritzer 0.5.0` closes the race
+([#20](https://github.com/INTENTIUS/spritzer/pull/20): an unrecognised command
+holds its exec session open until stdin EOF, so fountain's prompt reaches a
+live process). 34 of 34 conversations completed at the current pins, so the
+gate asserts the turn completes and streams output.
 
-So `just e2e` asserts the **pairing** rather than a result. Reattach implies an
-orphaned turn; no reattach implies a completed one. A reattach that succeeds,
-or a fresh provision that does not finish, stops the build:
+The two old outcomes are regressions now, and each failure names the pin that
+must have moved:
 
 ```
-✗ reattach ran and did NOT orphan the turn — spritzer#18 may be fixed.
-  Re-check #67 and the status page.
+✗ the turn was orphaned behind a reattach — fountain#603 or spritzer#19
+  regressed, or the pin rolled back
+✗ the runtime exited before the prompt was written — spritzer#20 regressed,
+  or spritzerImage rolled back below 0.5.0
 ```
 
-That holds on any machine and is stricter than asserting provisioning alone.
-Which path was taken is printed with the architecture beside it.
+[The data plane](/fountain-ops/reference/data-plane/) has the mechanism and the
+history of getting it wrong.
 :::
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving

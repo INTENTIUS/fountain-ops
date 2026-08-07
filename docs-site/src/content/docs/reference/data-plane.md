@@ -24,61 +24,66 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## Whether a turn finishes is a race
+## Turns complete
 
-Whether a turn completes is decided by which branch fountain takes, and that
-is a race, not a property of the deployment. From `conversation_server.ex`:
-
-```elixir
-case sandbox.status do
-  "ready"                             -> reattach(...)
-  s when s in ["pending", "starting"] -> fresh_provision(...)
-end
-```
-
-If provisioning marks the sandbox `ready` before the ConversationServer
-dispatches, fountain reattaches. Reattach calls `list_sessions` over plain
-HTTP, which spritzer serves as a WebSocket only, so it answers `426` and the
-turn is abandoned:
+At `fountain v0.6.1` and `spritzer 0.5.0`, every turn completes. fountain opens
+an exec session for the runtime command and writes the prompt into it as stdin;
+spritzer holds the session open, echoes the prompt back on stdout, and exits 0
+on EOF:
 
 ```
-event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
+event: output  claude --dangerously-skip-permissions --print --verbose --output-format stream-json …
+event: output  Reply with the single word: fountain
+event: stage   turn  done  {"exit_code":0}
 ```
 
-If dispatch gets there first, the sandbox is still `pending` and fountain
-provisions fresh. How that fresh turn *ends* is upstream's business, and it
-is being actively worked on — the shape has changed in three consecutive
-fountain releases, so this page no longer pins it. `just verify-conversation`
-asserts the plumbing (a sandbox requested, a turn dispatched, a terminal
-shape reached) and reports whichever ending it observed. Two things do not
-move with the releases: a completed emulator turn is only the echo, never a
-model, and the reattach arm above is spritzer's boundary
-([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)), not
-fountain's.
+That second line is the prompt making the round trip. It is the difference
+between provisioning a sandbox and holding a conversation — and it is still
+the **echo**, never a model. See [what it will never prove](#what-it-will-never-prove).
 
-:::caution[A faster machine is more likely to fail]
-The race is won by speed, so this gets *more* likely on better hardware.
-Measured with identical image digests on both sides:
+Measured: 34 of 34 conversations, including batches fired back to back, which
+is the pacing that used to fail most.
 
-| | |
-|---|---|
-| M-series laptop | reattach taken, turn orphaned — **5 of 5** |
-| GitHub runner | no reattach, turn completed — **2 of 2** |
+:::note[This was a race for a long time, and was described wrongly three times]
+Until recently a turn against the emulator usually did not finish, and three
+separate attempts to write down why were wrong in three different ways. The
+history is worth keeping, because each error had the same shape.
 
-It is consistent on any one machine, so it reads as deterministic until you
-try another one.
-[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the full probe.
+**What was actually broken.** fountain wrote the prompt with a bare
+`GenServer.call` into spritzer's exec session. spritzer's exec was one-shot: it
+echoed the command and closed. When the close won, the call landed on a dead
+process and exited the *caller*, taking the ConversationServer down. The
+supervisor restarted it, the restarted server found its sandbox already `ready`
+and took the reattach branch, and `list_sessions` — an unupgraded GET — came
+back `426`. The turn was orphaned behind an error that named nothing real.
+
+**How it was mis-described.** First as an architecture split, arm64 versus
+amd64. Then as a race on whether the sandbox reached `ready` before dispatch,
+"decided by machine speed", from 5-of-5 and 2-of-2 samples — the dispatch race
+never happened at all, and the same laptop returned both outcomes at even odds.
+Then, after fountain v0.6.0 started failing those turns cleanly, as "no turn
+finishes against the emulator, by upstream design" — while v0.6.0 was in fact
+completing 13 of 30. Every one of those was a small sample of a coin flip read
+as a property.
+
+**What closed it.** [fountain#603](https://github.com/BinaryBourbon/fountain/issues/603)
+stopped the lost write from crashing the server, so a doomed turn failed
+cleanly instead of orphaning.
+[spritzer#19](https://github.com/INTENTIUS/spritzer/pull/19) made an unupgraded
+GET on the exec path answer the session list rather than `426`. And
+[spritzer#20](https://github.com/INTENTIUS/spritzer/pull/20) ended the race
+outright: an unrecognised command holds its exec session open until stdin EOF,
+so the prompt reaches a process that is still there. Known verbs still exit
+immediately, which is what chant's Fly activities depend on.
+
+Both spritzer fixes merged three weeks before they shipped — `0.4.1` was the
+latest release and carried neither, so every deployment kept reproducing a bug
+that was already fixed on main. That is its own lesson:
+[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the full trail.
 :::
 
-[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is the `426`
-itself, and it is a real bug: it would break the legitimate reattach the
-branch was written for, after a BEAM restart. But it is not the reason a
-*first* turn fails. That a fresh conversation reaches the reattach branch at
-all is the upstream problem.
-
-So the emulated data plane proves the substrate can provision and address a
-sandbox. When the turn does complete, what completed is spritzer echoing the
-command back; see below.
+So the emulated data plane proves the substrate can provision a sandbox,
+address it, and carry a prompt into it and a reply back out.
 
 ## What it will never prove
 
@@ -155,8 +160,9 @@ The emulator satisfies every plumbing assertion with no model in the loop at
 all, so a gate that cannot tell those apart is worse than no gate. This one
 fails closed.
 
-Against the local default, `plumbing` currently fails at the orphaned turn
-above, which is the gate doing its job.
+Against the local default, `plumbing` passes: the turn completes and the prompt
+comes back. An orphaned turn or a `:command_exited` fails the build now — both
+were outcomes once and are regressions today.
 
 ## For real conversations
 

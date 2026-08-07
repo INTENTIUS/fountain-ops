@@ -29,7 +29,11 @@ import type { K8sChantConfig } from "@intentius/chant-lexicon-k8s";
 const env = process.env.FOUNTAIN_ENV ?? "dev";
 
 export default {
-  lexicons: ["k8s", "temporal", "github"],
+  // k3d is last in for a reason worth keeping: it made the cluster itself
+  // declarable (chant#1415), which was the final undeclared piece of
+  // infrastructure in this repo. Listing it also loads the k3dUp/k3dDown Op
+  // activities the cluster-up/cluster-down Ops run.
+  lexicons: ["k8s", "temporal", "github", "k3d"],
 
   // Whole-project discovery (bare `chant lifecycle diff|snapshot`) stays inside
   // src/ so it never walks ops/ or test/ fixtures. Per-stack builds pass their

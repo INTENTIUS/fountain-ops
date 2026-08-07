@@ -162,19 +162,18 @@ doctor:
 
 # ── cluster ────────────────────────────────────────────────────────────────
 
-# Create the k3d cluster. Idempotent.
-[doc("Create the k3d cluster, and wait for its apiserver. Idempotent.")]
+# Create the k3d cluster from its declaration. Idempotent.
+[doc("Create the declared k3d cluster, and wait for its apiserver. Idempotent.")]
 cluster-up:
     #!/usr/bin/env bash
     set -euo pipefail
-    if k3d cluster list "{{cluster}}" >/dev/null 2>&1; then
-      echo "cluster {{cluster}} already exists"
-    else
-      # No loadbalancer: this tier has no ingress, and the port-forward is how
-      # you reach it. One server node is enough to run a Deployment.
-      k3d cluster create "{{cluster}}" --servers 1 --agents 0 --no-lb --wait
-    fi
-    kubectl config use-context "k3d-{{cluster}}" >/dev/null
+    # The cluster's shape lives in cluster/cluster.ts (chant#1415) — one
+    # server, no agents, no loadbalancer, and the kubeconfig behaviour
+    # declared back on, reviewable like every other input. This recipe only
+    # builds that declaration and runs the Op that consumes it; `k3dUp` is
+    # idempotent, so an existing cluster is reused.
+    npx chant build cluster --lexicon k3d -o dist/cluster.yaml {{params}}
+    npx chant run cluster-up
 
     # `--wait` returns when k3d is satisfied, which is not the same as the
     # apiserver accepting connections. CI failed once with
@@ -193,7 +192,7 @@ cluster-up:
 
 [doc("Delete the k3d cluster.")]
 cluster-down:
-    -k3d cluster delete "{{cluster}}"
+    npx chant run cluster-down
 
 # ── secrets ────────────────────────────────────────────────────────────────
 

@@ -79,7 +79,8 @@ justfile             every target you need
 ci/pipeline.ts       this repo's own CI, declared
 pages/pipeline.ts    the Pages workflow, declared the same way
 workflows/shared.ts  the pins both workflows share
-ops/                 the deploy Op, for behold's Run button
+cluster/cluster.ts   the local k3d cluster itself, declared
+ops/                 the deploy Op and the cluster's up/down, for behold's Run button
 scripts/local/       cluster lifecycle, where behold looks for it
 docs-site/           the published site — Astro + Starlight
 src/
@@ -99,7 +100,7 @@ src/
 
 Both workflows are rendered from TypeScript and `just ci-check` fails if either committed YAML has drifted. The site is `just site`; `just site-dev` serves it locally.
 
-No resource file reads `process.env` — every input is a declared build parameter. One exception, and it is worth knowing: `chant.config.ts` reads `FOUNTAIN_ENV` for `ownership.env`, because ownership is read before build parameters exist. Set both, or neither. [INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396).
+No resource file reads `process.env` — every input is a declared build parameter, and since chant#1415 that includes the cluster itself: `cluster/cluster.ts` is the k3d cluster's shape, built to the config file `k3d cluster create --config` consumes. One exception, and it is worth knowing: `chant.config.ts` reads `FOUNTAIN_ENV` for `ownership.env`, because ownership is read before build parameters exist. Set both, or neither. [INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396).
 
 ## Licence
 

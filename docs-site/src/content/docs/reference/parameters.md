@@ -22,7 +22,7 @@ flags.
 |---|---|---|---|
 | `env` | any string | `dev` | The `app.kubernetes.io/instance` label on every resource. Also reads `FOUNTAIN_ENV` — see below |
 | `namespace` | any string | `fountain` | |
-| `image` | an image reference | `ghcr.io/binarybourbon/fountain:v0.6.0` | Pinned, not a floating tag |
+| `image` | an image reference | `ghcr.io/binarybourbon/fountain:v0.6.1` | Pinned, not a floating tag |
 | `host` | authority, port allowed | `localhost:4000` | `PUBLIC_URL` is `scheme://host`. Any port is stripped for `PHX_HOST`, the Ingress rule and certificate SANs |
 | `scheme` | `http` · `https` | `http` | `https` turns on fountain's redirect, HSTS and secure cookies, so whatever terminates TLS must set `X-Forwarded-Proto` |
 | `emailDelivery` | `none` · `resend` · `smtp` | `none` | fountain does not boot without a mail decision; `none` is a decision with two edges — see below |

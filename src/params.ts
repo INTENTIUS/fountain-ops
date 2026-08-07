@@ -17,7 +17,7 @@ import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } 
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
-export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.6.0";
+export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.6.1";
 
 /**
  * The externally-visible authority, port included where there is one.

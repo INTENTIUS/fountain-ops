@@ -30,7 +30,7 @@ about.
 
 | | |
 |---|---|
-| Completing a turn | **Never, against the emulator, as of fountain v0.6.0 — and now by upstream design.** Both arms of the race end short of a completed turn: the reattach path is orphaned by spritzer's `426` on `list_sessions` ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)), and the fresh path is failed `:command_exited` because the emulator's runtime exits before writing a prompt, which v0.6.0 stopped counting as completion (fountain#606 — correct behavior meeting an emulator that echoes and exits). On pins ≤ v0.5.x the fresh path completed with exit 0, and even that was only the echo, never a model ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the race history). A turn that truly completes now requires a real data plane ([#91](https://github.com/INTENTIUS/fountain-ops/issues/91)) |
+| Completing a turn | **Sometimes, and it is a race — with a one-version hole.** If the sandbox reaches `ready` before fountain dispatches, the reattach path is orphaned by spritzer's `426` on `list_sessions` ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the fresh turn completes with the echo's exit 0 — except on exactly v0.6.0, which failed every emulator turn `:command_exited` (fountain#606) until v0.6.1 kept the runtime's exit code instead (fountain#608). `just verify-conversation` accepts every vintage's shape and says which fired. A completed turn is still only spritzer echoing the command back, never a model ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the race history; the v0.6.1 native-arch images may have shifted which side arm64 wins) |
 
 ## Builds, unexercised
 

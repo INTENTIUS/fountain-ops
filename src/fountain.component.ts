@@ -79,6 +79,12 @@ export const postgres: Component | undefined =
     : {
         name: "postgres",
         dependsOn: [],
+        // The declared entities this component owns (chant#1491) — what joins
+        // a component to its resources by NAME rather than by naming
+        // convention. behold's composites zoom reads these off the component
+        // IR (INTENTIUS/behold#138); without them the [name] fallback claims
+        // nothing and the zoom degrades to the resources view.
+        liveNames: seams.postgres === "bundled" ? ["pgDeployment", "pgService", "pgClaim"] : ["pgCluster"],
         // CNPG names its primary differently and the operator owns the
         // rollout, so the wait is only meaningful for the bundled Deployment.
         deploy:
@@ -102,6 +108,7 @@ export const storage: Component | undefined =
     ? {
         name: "storage",
         dependsOn: [],
+        liveNames: ["flociDeployment", "flociService"],
         // `just storage-init` waits on exactly this before creating the
         // bucket: `aws s3 mb` against a floci that is not up yet fails in a
         // way that reads like a credentials problem.
@@ -120,6 +127,7 @@ export const dataPlane: Component | undefined =
     ? {
         name: "data-plane",
         dependsOn: [],
+        liveNames: ["spritzerDeployment", "spritzerService"],
         deploy: [rolloutReady("fountain-spritzer", "spritzer serves the Sprites API, not a health path")],
       }
     : undefined;
@@ -138,6 +146,7 @@ export const dataPlane: Component | undefined =
 export const fountain: Component = {
   name: "fountain",
   dependsOn: [postgres, dataPlane].filter((c): c is Component => c !== undefined).map((c) => c.name),
+  liveNames: ["deployment", "service", "ns"],
   deploy: [
     phase("Ready", [
       // /health/ready, not /health. The first says the release booted; the
@@ -167,6 +176,7 @@ export const backup: Component | undefined =
     ? {
         name: "backup",
         dependsOn: [postgres, storage].filter((c): c is Component => c !== undefined).map((c) => c.name),
+        liveNames: ["backup"],
         deploy: [
           phase("Scheduled", [
             shell({

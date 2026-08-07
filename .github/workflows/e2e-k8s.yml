@@ -1,0 +1,47 @@
+name: e2e-k8s
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-k8s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install just
+        run: |
+          curl -fsSL -o /tmp/just.tar.gz https://github.com/casey/just/releases/download/1.36.0/just-1.36.0-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf /tmp/just.tar.gz -C /tmp just
+          sudo mv /tmp/just /usr/local/bin/just
+          just --version
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64
+          chmod +x /tmp/k3d
+          sudo mv /tmp/k3d /usr/local/bin/k3d
+          k3d version
+      - name: Install
+        run: npm ci
+      - name: Prove the kubernetes rows
+        run: just e2e-k8s
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl --context k3d-fountain-k8s-stand-in get pods -A || true
+          kubectl --context k3d-fountain-k8s-stand-in logs -n fountain deployment/fountain --tail=200 || true
+      - name: Tear down
+        if: always()
+        run: k3d cluster delete fountain-k8s-stand-in || true

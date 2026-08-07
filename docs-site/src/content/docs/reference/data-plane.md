@@ -24,11 +24,10 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## Whether a turn finishes is a race
+## No turn finishes against the emulator, since fountain v0.6.0
 
-Whether a turn completes is decided by which branch fountain takes, and that
-is a race, not a property of the deployment. From `conversation_server.ex` in
-the pinned release:
+Which way a turn *fails* is decided by which branch fountain takes, and that
+is a race, not a property of the deployment. From `conversation_server.ex`:
 
 ```elixir
 case sandbox.status do
@@ -47,7 +46,19 @@ event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":
 ```
 
 If dispatch gets there first, the sandbox is still `pending`, fountain
-provisions fresh, and the turn runs to `exit_code: 0`.
+provisions fresh — and the turn now fails anyway, differently. The emulator's
+runtime echoes the command and exits without ever writing a prompt, and
+fountain v0.6.0 stopped counting that as a completed turn (fountain#606):
+
+```
+event: stage  turn  failed  {"reason":":command_exited"}
+```
+
+That is the right upstream behavior meeting the emulator's boundary, not a
+regression: a runtime that dies before the prompt was never a turn. On pins
+≤ v0.5.x the fresh path completed with `exit_code: 0`, and even that was only
+the echo. `just verify-conversation` accepts whichever terminal shape the
+pinned image produces and says which one you got.
 
 :::caution[A faster machine is more likely to fail]
 The race is won by speed, so this gets *more* likely on better hardware.

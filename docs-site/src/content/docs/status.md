@@ -30,7 +30,7 @@ about.
 
 | | |
 |---|---|
-| Completing a turn | **Sometimes, and it is a race.** If the sandbox reaches `ready` before fountain dispatches, it takes the reattach path, whose `list_sessions` call spritzer answers `426`, and the turn is orphaned ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the turn completes. A faster machine loses more often: 5 of 5 orphaned on a laptop, 2 of 2 completed on a CI runner ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67)). A completed turn is still only spritzer echoing the command back, never a model |
+| Completing a turn | **Never, against the emulator, as of fountain v0.6.0 — and now by upstream design.** Both arms of the race end short of a completed turn: the reattach path is orphaned by spritzer's `426` on `list_sessions` ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)), and the fresh path is failed `:command_exited` because the emulator's runtime exits before writing a prompt, which v0.6.0 stopped counting as completion (fountain#606 — correct behavior meeting an emulator that echoes and exits). On pins ≤ v0.5.x the fresh path completed with exit 0, and even that was only the echo, never a model ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the race history). A turn that truly completes now requires a real data plane ([#91](https://github.com/INTENTIUS/fountain-ops/issues/91)) |
 
 ## Builds, unexercised
 

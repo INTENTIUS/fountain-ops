@@ -1,5 +1,6 @@
 import { Ingress, Certificate } from "@intentius/chant-lexicon-k8s";
 import { namespace, hostname, httpsPublicUrl, seams, clusterIssuer, ingressClassName, labels } from "../params";
+import { service } from "../app/service";
 
 /**
  * The ingress seam.
@@ -60,7 +61,9 @@ export const ingress =
                     // Port 80 on the Service, never 9568 — the metrics
                     // listener enumerates routes and DB timings and is
                     // deliberately unreachable from outside the cluster.
-                    backend: { service: { name: "fountain", port: { name: "http" } } },
+                    // The reference, not the string: an Ingress→Service edge
+                    // for the graph (#84), serialized to the same literal.
+                    backend: { service: { name: service.name, port: { name: "http" } } },
                   },
                 ],
               },

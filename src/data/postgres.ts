@@ -83,7 +83,11 @@ export const pgDeployment = on
                 },
               }),
             ],
-            volumes: [{ name: "data", persistentVolumeClaim: { claimName: "fountain-postgres" } }],
+            // pgClaim.name, not the string it happens to equal: the reference
+            // is what puts a Deployment→PVC edge in the graph (#84), and the
+            // serializer resolves it to the identical literal. The assertion
+            // is safe — both declarations share the same seam guard.
+            volumes: [{ name: "data", persistentVolumeClaim: { claimName: pgClaim!.name } }],
           },
         },
       },

@@ -26,7 +26,10 @@ sprite `running` with both files present.
 
 ## Turns complete
 
-At `fountain v0.6.1` and `spritzer 0.5.0`, every turn completes. fountain opens
+At `fountain v0.7.0` and `spritzer 0.5.0`, the turn gate holds. The "every
+time" evidence below is v0.6.1's — 34 of 34, batched — and v0.7.0 has been
+through the single conversation `just e2e` runs, not a rerun of that batch;
+nothing in v0.7.0 touches this path. fountain opens
 an exec session for the runtime command and writes the prompt into it as stdin;
 spritzer holds the session open, echoes the prompt back on stdout, and exits 0
 on EOF:

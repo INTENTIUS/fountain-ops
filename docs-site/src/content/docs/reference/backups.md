@@ -135,12 +135,23 @@ get a copy out.
 against the barman-cloud plugin, and requires `postgres=cnpg` — a WAL archive
 with nothing archiving into it is refused at build time. After `just
 operators` it has been exercised end to end on k3d: `ContinuousArchiving`
-goes `True` against the emulated S3, an on-demand `Backup` through the plugin
-completes with a base backup and the WAL stream in the bucket, and a recovery
-`Cluster` bootstrapped from that ObjectStore comes up with every table the
-live database has. [Status](/fountain-ops/status/) is authoritative on what
-that run did and did not prove — the nightly `ScheduledBackup` has never
-fired on its own, and no real S3 bucket has ever held the archive.
+goes `True` against the emulated S3, and an on-demand `Backup` through the
+plugin completes with a base backup and the WAL stream in the bucket.
+
+The restore side has its own drill:
+
+```bash
+just pitr-drill
+```
+
+It bootstraps a throwaway one-instance CNPG cluster by recovery from the
+same ObjectStore — the newest base backup plus every WAL segment after it,
+which is the half a logical dump never exercises — counts its tables
+against live, and deletes it whether it passed or failed. Same contract as
+the dump drill: a drill that cannot verify is a failing finding on the
+archive, not on the drill. [Status](/fountain-ops/status/) is authoritative
+on what remains unproven — the nightly `ScheduledBackup` has never fired on
+its own, and no real S3 bucket has ever held the archive.
 
 Two things the exercise surfaced, both yours to handle on a real cluster:
 

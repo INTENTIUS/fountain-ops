@@ -1206,6 +1206,72 @@ restore-drill: _require-cluster
     echo "    MASTER_SECRETS_KEY, so this dump is only recoverable alongside the"
     echo "    key it was written under — see \`just master-key\`."
 
+# Prove the PITR archive can become a database again, without touching the live one.
+#
+# The pg-dump drill above proves a logical dump reads back; this proves the
+# other backup mode's whole chain — the newest base backup, plus the WAL
+# archived after it, replayed by a recovery bootstrap. The throwaway is a
+# real one-instance CNPG cluster, because that is what a barman restore
+# produces; it is deleted whether the drill passed or failed.
+[doc("Prove the PITR archive restores into a working cluster. Needs backups=barman-pitr.")]
+pitr-drill: _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! kubectl get objectstore.barmancloud.cnpg.io fountain-backups -n "{{ns}}" >/dev/null 2>&1; then
+      echo "  ✗ no ObjectStore in {{ns}} — nothing to drill" >&2
+      echo "    Needs backups=barman-pitr, which needs postgres=cnpg." >&2
+      exit 2
+    fi
+    primary="$(kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" -o jsonpath='{.status.currentPrimary}')"
+    [ -n "$primary" ] || { echo "  ✗ fountain-pg has no current primary — is the live cluster healthy?" >&2; exit 1; }
+
+    live="$(kubectl exec -n "{{ns}}" "pod/$primary" -c postgres -- \
+      psql -U postgres -d fountain -tAc \
+      "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null | tr -d '[:space:]')"
+    drill="fountain-pg-drill-$(date +%s)"
+    echo "  live tables:  $live"
+    echo "  throwaway:    $drill (recovery from ObjectStore fountain-backups)"
+
+    cleanup() {
+      kubectl delete cluster.postgresql.cnpg.io "$drill" -n "{{ns}}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+
+    cnpg_image="$(kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" -o jsonpath='{.spec.imageName}')"
+    pg_storage="$(kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" -o jsonpath='{.spec.storage.size}')"
+    sed -e "s|__DRILL_CLUSTER__|$drill|g" -e "s|__NS__|{{ns}}|g" \
+        -e "s|__CNPG_IMAGE__|$cnpg_image|g" -e "s|__PG_STORAGE__|$pg_storage|g" \
+        scripts/pitr-drill.yaml | kubectl apply -f - >/dev/null
+
+    ready=""
+    for i in $(seq 1 60); do
+      ready="$(kubectl get cluster.postgresql.cnpg.io "$drill" -n "{{ns}}" -o jsonpath='{.status.readyInstances}' 2>/dev/null)"
+      [ "$ready" = "1" ] && break
+      sleep 5
+    done
+    if [ "$ready" != "1" ]; then
+      echo "" >&2
+      echo "  ✗ the recovery cluster never became ready." >&2
+      echo "    That is a finding on the archive, not on the drill." >&2
+      kubectl get cluster.postgresql.cnpg.io "$drill" -n "{{ns}}" -o jsonpath='{.status.phase} — {.status.phaseReason}' >&2 || true
+      echo "" >&2
+      exit 1
+    fi
+
+    n="$(kubectl exec -n "{{ns}}" "pod/$drill-1" -c postgres -- \
+      psql -U postgres -d fountain -tAc \
+      "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null | tr -d '[:space:]')"
+    if [ "$n" != "$live" ]; then
+      echo "" >&2
+      echo "  ✗ recovered $n tables; the live database has $live." >&2
+      echo "    The archive is not a faithful copy. A finding on the archive." >&2
+      exit 1
+    fi
+    echo "  ✓ recovered $n tables from base backup + WAL, matched live, threw the cluster away"
+    echo ""
+    echo "    Same caveat as the dump drill: the rows are ciphertext without"
+    echo "    MASTER_SECRETS_KEY — see \`just master-key\`."
+
 # What the deployment would look like elsewhere, without applying anything.
 [doc("What the deployment would look like elsewhere, without applying anything.")]
 preview target="kubernetes" tier="ha" class="nginx":

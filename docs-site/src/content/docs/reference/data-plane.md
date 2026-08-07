@@ -26,48 +26,87 @@ sprite `running` with both files present.
 
 ## Whether a turn finishes is a race
 
-Whether a turn completes is decided by which branch fountain takes, and that
-is a race, not a property of the deployment. From `conversation_server.ex` in
-the pinned release:
+Whether a turn completes is a race, not a property of the deployment — but the
+race is not the one the stage sequence makes it look like.
 
-```elixir
-case sandbox.status do
-  "ready"                             -> reattach(...)
-  s when s in ["pending", "starting"] -> fresh_provision(...)
-end
-```
+Every conversation provisions fresh. `kick_turn/4` opens an exec session for
+the runtime command and then writes the prompt into it as stdin. spritzer's
+exec is **one-shot**: it runs the command, echoes it back, and closes. Whether
+the write reaches the runtime before that close is the whole race.
 
-If provisioning marks the sandbox `ready` before the ConversationServer
-dispatches, fountain reattaches. Reattach calls `list_sessions` over plain
-HTTP, which spritzer serves as a WebSocket only, so it answers `426` and the
-turn is abandoned:
+If the write lands first, the turn runs to `exit_code: 0`. If the close wins,
+the runtime is gone before it ever reads the prompt, and the turn ends:
 
 ```
-event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
+event: stage  turn  failed  {"reason":":command_exited (runtime exited 0)"}
 ```
 
-If dispatch gets there first, the sandbox is still `pending`, fountain
-provisions fresh, and the turn runs to `exit_code: 0`.
+The conversation resets to `idle`, the turn row gets `failed` with `ended_at`
+and the runtime's `exit_code`, and nothing is left running. **A lost race costs
+you the turn, not the deployment.**
 
-:::caution[A faster machine is more likely to fail]
-The race is won by speed, so this gets *more* likely on better hardware.
-Measured with identical image digests on both sides:
+The `0` is not a contradiction: spritzer's echo really did succeed and exit
+cleanly — it just never read the prompt. On a real data plane this is where a
+non-zero code and the runtime's last words show up instead, which is the point
+of carrying them.
+
+:::caution[Both outcomes are normal, and the split is not a fixed rate]
+Measured on one deployment, arm64, fountain `v0.6.1` and spritzer `0.4.1`, 14
+conversations of one prompt each:
 
 | | |
 |---|---|
-| M-series laptop | reattach taken, turn orphaned — **5 of 5** |
-| GitHub runner | no reattach, turn completed — **2 of 2** |
+| provisioned fresh | **14 of 14** |
+| completed | 5 |
+| failed as `:command_exited` | 9 |
+| turns carrying an `exit_code` | **14 of 14** |
+| `ConversationServer` crashes | **0** |
+| reattaches | **0** |
 
-It is consistent on any one machine, so it reads as deterministic until you
-try another one.
-[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the full probe.
+The split moves with how fast conversations are opened — on `v0.6.0`, 11 of 16
+completed with three seconds between them against 2 of 14 packed back to back —
+so treat it as "both happen often", not as a rate. The window is a few
+milliseconds either way.
 :::
 
-[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) is the `426`
-itself, and it is a real bug: it would break the legitimate reattach the
-branch was written for, after a BEAM restart. But it is not the reason a
-*first* turn fails. That a fresh conversation reaches the reattach branch at
-all is the upstream problem.
+The remaining cause is spritzer's exec lifetime, which is
+[spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18): holding the
+session open until stdin EOF instead of exiting as soon as the command
+produces output is what would let a turn complete reliably here. The `426`
+that issue also covers is real and would break the legitimate
+reattach-after-restart case, but it is no longer reached by a first turn.
+
+:::note[This used to be much worse]
+Before fountain `v0.6.0`, the losing branch did not fail cleanly. The write was
+a bare `GenServer.call`, so landing on the exited process exited the *caller* —
+it took the ConversationServer down. The supervisor restarted it, the restarted
+server found its own sandbox already `ready`, took the reattach branch, and
+`list_sessions` got spritzer's `426`, orphaning the turn behind an error that
+named nothing real. 27 conversations on `v0.4.1` produced 14 crashes and 14
+reattaches, each reattach 1–3ms after its own crash and none without a crash
+first.
+
+[#67](https://github.com/INTENTIUS/fountain-ops/issues/67) first read that as a
+race on whether the sandbox reached `ready` before dispatch, decided by machine
+speed — 5 of 5 orphaned on a laptop, 2 of 2 completed on a runner. Neither
+held: the dispatch race never occurs, and the same laptop returns both outcomes
+at roughly even odds. Those samples were a coin flip landing the same way
+twice. Fixed upstream in
+[fountain#603](https://github.com/BinaryBourbon/fountain/issues/603).
+:::
+
+The failure says why, too. `v0.6.0` reported the bare mechanism —
+`:command_exited`, with `turns.exit_code` left `NULL` on all 17 failed turns of
+the run above — so a bad flag, a missing binary and an OOM kill all read
+identically. `v0.6.1` drains the runtime's exit and whatever it managed to
+print before dying, and attributes both to the turn
+([fountain#608](https://github.com/BinaryBourbon/fountain/issues/608)); every
+one of the 14 turns above carries an `exit_code` now.
+
+The upstream fix is
+[fountain#603](https://github.com/BinaryBourbon/fountain/issues/603): a runtime
+that exits before the prompt is written should fail the turn with a reason,
+not take the ConversationServer down.
 
 So the emulated data plane proves the substrate can provision and address a
 sandbox. When the turn does complete, what completed is spritzer echoing the
@@ -148,8 +187,10 @@ The emulator satisfies every plumbing assertion with no model in the loop at
 all, so a gate that cannot tell those apart is worse than no gate. This one
 fails closed.
 
-Against the local default, `plumbing` currently fails at the orphaned turn
-above, which is the gate doing its job.
+Against the local default, `plumbing` fails whenever the turn does — it asserts
+`exit_code: 0`, and a `:command_exited` turn has none. That is the gate doing
+its job, and it is why `just e2e` wraps it rather than calling it directly:
+the e2e gate accepts either legitimate shape and stops only on a third.
 
 ## For real conversations
 

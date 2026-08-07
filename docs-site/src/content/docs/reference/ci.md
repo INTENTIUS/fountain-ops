@@ -58,27 +58,30 @@ to look at; CI runs its own teardown regardless.
 
 :::caution[The conversation gate has two legitimate outcomes]
 Whether a turn completes is decided by a race, so neither result can be pinned.
-The pinned release branches on `sandbox.status`: `ready` reattaches, and
-reattach calls `list_sessions`, which spritzer answers `426`, orphaning the
-turn. `pending` or `starting` provisions fresh and the turn runs to
-`exit_code: 0`.
+Every conversation provisions fresh; what varies is whether fountain's write of
+the prompt into the exec session beats spritzer's one-shot exec closing it. If
+the write wins, the turn runs to `exit_code: 0`. If the close wins, the runtime
+never reads the prompt and the turn ends `failed` with `:command_exited`.
 
-Machine speed decides which, so a faster machine sees the orphaned turn more
-often. Measured with identical image digests: 5 of 5 orphaned on a laptop, 2 of
-2 completed on a CI runner.
-[The data plane](/fountain-ops/reference/data-plane/) has the detail.
+Both happen often — 5 completed to 9 failed over 14 runs at the `v0.6.1` pin,
+and the split moves with how fast conversations are opened, so no rate is
+asserted. [The data plane](/fountain-ops/reference/data-plane/) has the
+measurements.
 
-So `just e2e` asserts the **pairing** rather than a result. Reattach implies an
-orphaned turn; no reattach implies a completed one. A reattach that succeeds,
-or a fresh provision that does not finish, stops the build:
+So `just e2e` accepts either shape and stops on a third:
 
 ```
-✗ reattach ran and did NOT orphan the turn — spritzer#18 may be fixed.
-  Re-check #67 and the status page.
+✗ a fresh conversation reattached — the fountain#603 crash signature,
+  fixed in this pin. The image may have regressed or been rolled back.
 ```
 
-That holds on any machine and is stricter than asserting provisioning alone.
-Which path was taken is printed with the architecture beside it.
+Before `v0.6.0` a lost race crashed the ConversationServer, and its restart
+reattached into a `426` and orphaned the turn
+([fountain#603](https://github.com/BinaryBourbon/fountain/issues/603)). 44
+conversations across the two pins since produced zero crashes and zero
+reattaches, so a reattach in a fresh conversation now means the pin regressed.
+A turn that fails for some *other* reason also stops the build — that reason
+would be new, and worth reading before it gets documented.
 :::
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving

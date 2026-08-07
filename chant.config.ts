@@ -139,7 +139,7 @@ export default {
     // X-Forwarded-Proto or every request looks like http and redirect-loops.
     host: { type: "string", default: "localhost:4000" },
     scheme: { type: "string", enum: ["http", "https"], default: "http" },
-    image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.4.1" },
+    image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.6.1" },
 
     // ── the two axes ──────────────────────────────────────────────────────
     // Separate questions, and not a free grid: k3d + ha is refused, because

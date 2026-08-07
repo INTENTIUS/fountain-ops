@@ -510,41 +510,58 @@ e2e:
 
     # The conversation gate, asserted as the pairing rather than a result.
     #
-    # Both outcomes below are legitimate and which one you get is a race, not a
-    # property of the deployment. fountain v0.4.0, dispatch_provision/7:
+    # Two outcomes are legitimate and which one you get is a race, not a
+    # property of the deployment. Every conversation provisions fresh. What
+    # varies is inside kick_turn/4: fountain opens the exec session and writes
+    # the prompt into it as stdin, and spritzer's exec is one-shot — it echoes
+    # the command and closes. If the write lands first the turn runs to exit 0.
+    # If the close wins, the runtime is gone before it reads the prompt and the
+    # turn ends `failed` with reason :command_exited.
     #
-    #   case sandbox.status do
-    #     "ready"                        -> reattach(...)
-    #     s when s in ["pending", ...]   -> fresh_provision(...)
+    # Measured on this deployment at the v0.6.0 pin: 30 conversations, 30 fresh
+    # provisions, 13 completed and 17 failed. The split moves with how fast the
+    # conversations are opened — 11/16 completed with 3s between them, 2/14
+    # packed back to back — so no rate is asserted here, only that both
+    # outcomes are shaped correctly.
     #
-    # If provisioning marks the sandbox `ready` before the ConversationServer
-    # dispatches, it takes the reattach path — and reattach calls list_sessions,
-    # which spritzer answers 426 (spritzer#18), orphaning the turn. If dispatch
-    # gets there first, it provisions fresh and the turn runs to exit 0.
+    # The THIRD outcome is a regression and stops the build: a reattach in a
+    # fresh conversation's own stream. That was the fountain#603 signature —
+    # the write exited the ConversationServer, the supervisor restarted it, the
+    # restarted server found its sandbox already `ready` and reattached, and
+    # list_sessions got spritzer's 426 (spritzer#18), orphaning the turn.
+    # v0.6.0 fixed it (fountain#606) and 30 conversations produced zero crashes
+    # and zero reattaches, so seeing one again means the pin regressed.
     #
-    # Whoever wins is decided by machine speed, so a FASTER machine is MORE
-    # likely to see the failure. Observed 5/5 orphaned on an M-series laptop and
-    # 2/2 completed on a GitHub runner, with identical image digests. #67.
-    #
-    # So neither result can be pinned. What is pinned is that the two agree:
-    # reattach implies orphaned, and no reattach implies a completed turn.
-    # Anything else — reattach that somehow succeeds, or no reattach and no exit
-    # 0 — is new, and worth stopping for. That is stricter than asserting
-    # provisioning alone and it holds on any machine.
-    step "the conversation gate, and that its outcome matches its path"
+    # History worth keeping: #67 first read this as a race on whether the
+    # sandbox reached `ready` before dispatch, decided by machine speed — 5/5
+    # orphaned on a laptop, 2/2 completed on a runner. Neither held. 27
+    # conversations on v0.4.1 gave 27 fresh provisions and 14 reattaches, every
+    # one of them 1-3ms after its own crash and none without a crash first.
+    # Those small samples were a coin flip landing the same way twice.
+    step "the conversation gate, and that its outcome is one of the two legitimate shapes"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
     printf '%s' "$out" | grep -q 'provision' \
       || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
+
+    # Checked before the two good shapes, so a regression cannot be read as one
+    # of them.
     if printf '%s' "$out" | grep -q '"stage":"reattach"'; then
-      printf '%s' "$out" | grep -q "turn_orphaned" \
-        || { echo "$out" | tail -20; fail "reattach ran and did NOT orphan the turn — spritzer#18 may be fixed. Re-check #67 and the status page."; }
-      echo "  ✓ reattach path taken, turn orphaned as spritzer#18 describes ($(uname -m))"
-    else
-      printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
-        || { echo "$out" | tail -20; fail "no reattach, so the turn should have completed, and it did not"; }
-      echo "  ✓ fresh provision, turn completed ($(uname -m))"
+      echo "$out" | tail -20
+      fail "a fresh conversation reattached — the fountain#603 crash signature, fixed in this pin. The image may have regressed or been rolled back."
+    fi
+
+    if printf '%s' "$out" | grep -q "plumbing: sandbox provisioned"; then
+      echo "  ✓ the prompt landed first, turn completed"
       echo "    (spritzer echoes the command back — this is plumbing, not a model reply)"
+    elif printf '%s' "$out" | grep -q '"state":"failed"'; then
+      printf '%s' "$out" | grep -q 'command_exited' \
+        || { echo "$out" | tail -20; fail "the turn failed for something other than the runtime exiting first — that reason is new, and worth reading before it is documented"; }
+      echo "  ✓ the exec closed first, turn failed cleanly as :command_exited"
+      echo "    (the emulator's one-shot exec — spritzer#18 is the upstream call)"
+    else
+      echo "$out" | tail -20
+      fail "the turn neither completed nor failed cleanly — no exit 0 and no turn/failed"
     fi
 
     # Every seam that needs a CRD, against a real API server rather than

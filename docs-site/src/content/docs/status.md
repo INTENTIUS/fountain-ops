@@ -27,7 +27,7 @@ about.
 
 | | |
 |---|---|
-| Completing a turn | **Sometimes, and it is a race.** If the sandbox reaches `ready` before fountain dispatches, it takes the reattach path, whose `list_sessions` call spritzer answers `426`, and the turn is orphaned ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the turn completes. A faster machine loses more often: 5 of 5 orphaned on a laptop, 2 of 2 completed on a CI runner ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67)). A completed turn is still only spritzer echoing the command back, never a model |
+| Completing a turn | **Sometimes, and it is a race — 5 completed to 9 failed over 14 runs at the `v0.6.1` pin.** fountain writes the prompt into the exec session as stdin; spritzer's exec is one-shot and may have closed first, in which case the runtime never reads the prompt and the turn ends `failed` with `:command_exited (runtime exited N)`. It fails cleanly and says why — conversation back to `idle`, nothing left running, the runtime's exit code on the turn ([fountain#603](https://github.com/BinaryBourbon/fountain/issues/603), [#608](https://github.com/BinaryBourbon/fountain/issues/608), both shipped). Completing reliably needs [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18) upstream. A completed turn is still only spritzer echoing the command back, never a model |
 
 ## Builds, unexercised
 
@@ -56,6 +56,9 @@ server. The rows it does not cover are the ones needing operators or a cluster
 this repo did not create, and those rows say so.
 
 The conversation gate is the one row with two legitimate outcomes, so `just
-e2e` asserts that the outcome matches the path taken rather than asserting a
-result. A reattach that stops orphaning turns fails the build, which is how
-this page finds out it has gone stale in the other direction.
+e2e` asserts that the result is one of those two shapes — completed, or failed
+as `:command_exited` — rather than pinning either. Anything else stops the
+build, including the crash-and-reattach that `v0.6.0` fixed. That is how this
+page finds out it has gone stale in either direction: if turns start completing
+every time, the failing shape stops appearing and this row is wrong; if the
+crash comes back, the build says so.

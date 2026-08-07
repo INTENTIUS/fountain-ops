@@ -90,7 +90,7 @@ what has actually run.
 | `backupSecretName` | any string | `fountain-backup-s3-credentials` | The S3 credentials the backup path reads |
 | `backupS3Endpoint` | a URL | floci's in-cluster Service when `storage=floci`, otherwise unset | Unset means the AWS default endpoint — see below |
 | `flociImage` | an image reference | `floci/floci:1.5.34` | Pinned. `storage=floci` |
-| `spritzerImage` | an image reference | `ghcr.io/intentius/spritzer:0.4.1` | Pinned, because the emulator decides what a local conversation does. `dataPlane=spritzer` |
+| `spritzerImage` | an image reference | `ghcr.io/intentius/spritzer:0.5.0` | Pinned, because the emulator decides what a local conversation does. `dataPlane=spritzer` |
 
 ### Infisical
 

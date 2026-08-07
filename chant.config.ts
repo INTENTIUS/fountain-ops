@@ -248,7 +248,7 @@ export default {
     // dataPlane=spritzer. Pinned rather than :latest — the emulator decides
     // what a local conversation does, so a floating tag would change what a
     // green run means with nothing in this repo changing.
-    spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.4.1" },
+    spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.5.0" },
     // storage=floci. Pinned for the same reason spritzer is.
     flociImage: { type: "string", default: "floci/floci:1.5.34" },
     // Unset means the cluster's default StorageClass, which is what k3d wants.

@@ -194,7 +194,7 @@ export const flociImage = (params.flociImage as string | undefined) ?? "floci/fl
  * in this repo changing.
  */
 export const spritzerImage =
-  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.4.1";
+  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.5.0";
 
 // ── traefik seam ───────────────────────────────────────────────────────────
 /** Where the redirect middleware lives. Same namespace unless told otherwise. */

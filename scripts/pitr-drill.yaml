@@ -1,0 +1,28 @@
+# The PITR restore drill's throwaway cluster.
+#
+# A one-instance CNPG cluster that bootstraps by recovery from the same
+# ObjectStore the live cluster archives into — the newest base backup, plus
+# every WAL segment after it, which is the half a pg_dump drill never
+# exercises. `just pitr-drill` substitutes __DRILL_CLUSTER__ and __NS__,
+# counts what came back against live, and deletes this whether it passed or
+# failed. Nothing here touches the live cluster or its archive: recovery
+# reads the store, and serverName pins whose backups these are.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: __DRILL_CLUSTER__
+  namespace: __NS__
+spec:
+  instances: 1
+  imageName: __CNPG_IMAGE__
+  storage: { size: __PG_STORAGE__ }
+  bootstrap:
+    recovery:
+      source: origin
+  externalClusters:
+    - name: origin
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: fountain-backups
+          serverName: fountain-pg

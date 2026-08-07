@@ -859,11 +859,32 @@ verify-email EMAIL: _require-cluster
           | del(.args, .livenessProbe, .readinessProbe, .startupProbe, .ports)
         ]')"
 
-    set +e
-    out="$(kubectl run "fountain-verify-email-$$" --rm -i --restart=Never -n "{{ns}}" \
-      --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
-    rc=$?
-    set -e
+    # Same two attempts, same reasoning, as promote-admin below — and the same
+    # exposure: this runs inside `just e2e` one line before the first-admin
+    # gate, on the identical pod shape, so hardening only the gate that has
+    # been seen to flake would leave the door open next to it.
+    #
+    # Idempotent enough for a retry: `Accounts.verify_email/2` re-stamps
+    # `email_verified_at` unconditionally and returns `{:ok, _}`, so a second
+    # attempt prints the same success line and passes on what the first one
+    # actually did. It is not a pure no-op — the re-stamp records a second
+    # `auth.email.verified` audit row — which is the correct trade against a
+    # false red, and only happens on the rare lost answer.
+    out=""
+    rc=0
+    for attempt in 1 2; do
+      set +e
+      out="$(kubectl run "fountain-verify-email-$$-$attempt" --rm -i --restart=Never -n "{{ns}}" \
+        --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
+      rc=$?
+      set -e
+      if printf '%s' "$out" | grep -qE "You can now sign in|No account found"; then
+        break
+      fi
+      if [ "$attempt" = 1 ]; then
+        echo "  (verify pod returned no result line — attach flake, retrying once)" >&2
+      fi
+    done
 
     # The eval reports a missing account by printing to stderr and returning
     # an error tuple, which does not set an exit code. Reporting success for
@@ -924,11 +945,42 @@ promote-admin EMAIL: _require-cluster
           | del(.args, .livenessProbe, .readinessProbe, .startupProbe, .ports)
         ]')"
 
-    set +e
-    out="$(kubectl run "fountain-promote-admin-$$" --rm -i --restart=Never -n "{{ns}}" \
-      --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
-    rc=$?
-    set -e
+    # Two attempts, for the reason the register gate has them (#107):
+    # `kubectl run -i` can lose a short-lived pod's output — attach fails and
+    # the logs fallback races the pod's exit — and a grant that happened then
+    # reads as an error with nothing to look at.
+    #
+    # The condition is "no recognised result line", NOT "no output". That is
+    # the difference from the register gate, and it is the whole reason this
+    # one still went red: the eval pod prints the EMAIL_DELIVERY banner at
+    # boot, so its output is never empty. On 2026-08-07 a fountain pin bump
+    # (#111) failed here with rc 0 and nothing but that banner — `[ -n
+    # "$out" ]` would have sailed straight past it.
+    #
+    # Retrying is safe because the grant is idempotent: a second run against
+    # an account the first one promoted reports "is already an admin", which
+    # passes exactly as the grant does. The retry forgives losing the answer,
+    # never the act — "No account found" is an answer, so it breaks out and
+    # fails below rather than asking twice.
+    #
+    # The attempt number is in the pod name because the first pod may still
+    # be terminating when the second starts, and a name collision would fail
+    # the retry as surely as the flake it exists to survive.
+    out=""
+    rc=0
+    for attempt in 1 2; do
+      set +e
+      out="$(kubectl run "fountain-promote-admin-$$-$attempt" --rm -i --restart=Never -n "{{ns}}" \
+        --image=unused --quiet --overrides="{\"apiVersion\":\"v1\",\"spec\":$spec}" 2>&1)"
+      rc=$?
+      set -e
+      if printf '%s' "$out" | grep -qE "Granted admin to|is already an admin|No account found"; then
+        break
+      fi
+      if [ "$attempt" = 1 ]; then
+        echo "  (promote pod returned no result line — attach flake, retrying once)" >&2
+      fi
+    done
 
     # Same contract as verify-email: the eval reports a missing account with
     # an error tuple that sets no exit code, so the printed line decides.

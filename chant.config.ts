@@ -92,9 +92,16 @@ export default {
       // Manifest files export resources for the build to collect, not for each
       // other. "Never referenced in this file" is the normal case here.
       COR004: "off",
-      // Postgres writes to its data directory and the backup job writes a dump
-      // to its work volume. A read-only root filesystem is right for the app
-      // tier, which has one, and wrong for these two.
+      // Re-audited after the chant-0.41.14 parser fix widened what this
+      // check can see. The writers that remain are structural: the bundled
+      // Postgres needs /var/run/postgresql and /tmp writable (its data
+      // directory is a mount, but the socket and scratch paths are not), and
+      // floci's object store IS its filesystem — the emulation is that the
+      // bytes land there. Everything else now runs read-only: the app tier
+      // always did, spritzer declares it, and the backup dump and upload
+      // containers gained it in the same audit (their only writes go to the
+      // mounted work volume; upload gets HOME pointed there because aws-cli
+      // insists on a writable ~/.aws).
       WK8203: "off",
       // Four components compose the same shape: one phase, one shell step.
       // COMP007 reads that as copy-paste sprawl and suggests a preset, which

@@ -63,7 +63,9 @@ export const backup =
                       // and writes to an emptyDir, so it needs no capability
                       // at all.
                       imagePullPolicy: "IfNotPresent",
-                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false },
+                      // Read-only root is fine here: pg_dump writes exactly one
+                      // file, and it goes to the mounted work volume.
+                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true },
                       command: ["/bin/bash", "-c"],
                       args: [
                         `set -euo pipefail
@@ -104,10 +106,15 @@ echo "$OUT" > /work/latest`,
                       // that made the checker see it again is what surfaced
                       // these.
                       imagePullPolicy: "IfNotPresent",
-                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false },
+                      // Read-only root, with HOME on the work volume: aws-cli
+                      // insists on a writable ~/.aws for its cache even when
+                      // AWS_CONFIG_FILE points elsewhere, and /work is the one
+                      // place this container legitimately writes.
+                      securityContext: { capabilities: { drop: ["ALL"] }, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true },
                       command: ["/bin/sh", "-c"],
                       args: [
                         `set -eu
+export HOME=/work
 if [ "\${S3_FORCE_PATH_STYLE:-false}" = "true" ]; then
   printf '[default]\\ns3 =\\n    addressing_style = path\\n' > /work/aws-config
   export AWS_CONFIG_FILE=/work/aws-config

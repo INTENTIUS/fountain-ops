@@ -1,16 +1,15 @@
 # fountain-ops
 
-Self-hosted [fountain](https://github.com/BinaryBourbon/fountain), deployed by [chant](https://intentius.io/chant).
-
-You drive this by its `just` targets. You do not need to know chant to use it.
+Run your own [fountain](https://github.com/BinaryBourbon/fountain). One command stands it up on a laptop; the same build, with a handful of parameters, is how it goes everywhere else. You drive all of it with `just`.
 
 **Docs:** [Stand it up](https://intentius.io/fountain-ops/getting-started/stand-it-up/) ·
-[Seams](https://intentius.io/fountain-ops/reference/seams/) ·
+[Make it durable](https://intentius.io/fountain-ops/getting-started/make-it-durable/) ·
+[Real cluster](https://intentius.io/fountain-ops/getting-started/real-cluster/) ·
 [Status](https://intentius.io/fountain-ops/status/)
 
-## Getting started
+## On a laptop
 
-About five minutes on a laptop, most of it pulling images.
+About five minutes, most of it pulling images.
 
 **You need:** Docker running, plus `k3d`, `kubectl`, `node`, `npm`, `jq` and `just`. Check all but `just` — you have that already or you could not run it — with `just doctor`, which prints the install line for whatever is missing.
 
@@ -35,11 +34,24 @@ Register at `/auth/register` — or `POST /api/auth/register`, if you are not dr
 
 `just verify-email` and `just promote-admin` remain for older image pins (≤ v0.4.0, which ignore these switches), broken mail providers, second admins, and `firstUserAdmin=false`: [Promoting an admin manually](https://intentius.io/fountain-ops/reference/promote-admin/) has them, and what runs underneath. You do not need admin to use the instance.
 
-### When it goes wrong
+## Durable
+
+Two app replicas that join into one Erlang cluster, over a Postgres the CNPG operator runs replicated — still on the laptop, so the first `ha` you stand up is not on a cluster that matters:
+
+```bash
+just operators
+just params="--param tier=ha --param postgres=cnpg --param dataPlane=sprites --param storage=s3" up
+```
+
+`tier=ha` is the decision; the other three parameters exist because the laptop defaults are emulators and `ha` refuses to stand on an emulator — leave one off and the error hands you the next. What comes up, what stays placeholder, and why: [Make it durable](https://intentius.io/fountain-ops/getting-started/make-it-durable/).
+
+## On a real cluster
+
+The same build, aimed at a cluster k3d did not create. You bring the database, the Secret, the ingress class and the hostname; each is one `--param`, and [Stand it up on a real cluster](https://intentius.io/fountain-ops/getting-started/real-cluster/) takes the decisions in order. `just preview kubernetes ha` shows the manifests without touching anything, and `just e2e-k8s` re-checks the whole path — light, then ha over it — on a three-node stand-in it creates and deletes itself.
+
+## When it goes wrong
 
 The steps of `just up` are separate targets, because when a deploy fails you want the step, not the whole thing again.
-
-Build parameters go through a `params` variable — `just params="--param postgres=cnpg" up`.
 
 ```bash
 just status       # everything in the namespace
@@ -48,16 +60,6 @@ just pg-logs      # the database
 ```
 
 `just up` is safe to re-run. It will not create a second cluster, and it will not mint a second secret over the first.
-
-## The shape of it
-
-**Target** is where the substrate runs (`k3d` · `kubernetes`). **Tier** is how durable it is (`light` · `ha`). Separate questions — and not a free grid: three of the four combinations build, and the fourth is refused with an error naming the seam that fixes it.
-
-How much of the machine it asks for is `size` (`small` · `medium` · `large`), orthogonal to both — a bigger single pod is not a more durable one.
-
-Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`, `dataPlane`. Every mode is expressible. What is refused is incoherence — a "highly available" single Postgres, a WAL archive with nothing archiving into it, a certificate nothing terminates.
-
-→ [Targets and tiers](https://intentius.io/fountain-ops/reference/targets-and-tiers/) · [Seams](https://intentius.io/fountain-ops/reference/seams/) · [The data plane](https://intentius.io/fountain-ops/reference/data-plane/)
 
 ## Status
 
@@ -71,7 +73,15 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
 
+## The shape of it, in four words
+
+**Target** is where it runs (`k3d` · `kubernetes`). **Tier** is how durable (`light` · `ha`). **Size** (`small` · `medium` · `large`) is how much machine one pod asks for — orthogonal, because a bigger pod is not a more durable one. Every dependency is a **seam** with a mode — `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`, `dataPlane`, `storage` — and the target picks defaults that make sense where it runs. Combinations that would apply cleanly and mean something other than they say are refused with an error naming the parameter that fixes it.
+
+→ [Targets and tiers](https://intentius.io/fountain-ops/reference/targets-and-tiers/) · [Seams](https://intentius.io/fountain-ops/reference/seams/) · [Build parameters](https://intentius.io/fountain-ops/reference/parameters/)
+
 ## Layout
+
+The manifests are compiled from TypeScript by [chant](https://intentius.io/chant) — that is why the same parameters always produce the same resources, and why incoherent combinations are refused at build time. You never invoke it directly.
 
 ```
 chant.config.ts      lexicons, params, ownership, lint

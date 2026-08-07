@@ -68,6 +68,10 @@ Which combinations build and which are refused is asserted in
 `test/tiers-and-seams.test.ts`, so if a seam change shifts the answer, a build
 fails rather than this page going quietly wrong.
 
+Standing `k3d` + `ha` up for real — the full override set, what comes up, and
+what stays placeholder — is
+[Make it durable](/fountain-ops/getting-started/make-it-durable/).
+
 ## Replicas and clustering are one decision
 
 Above one replica, fountain's pods must form a real Erlang cluster or they run

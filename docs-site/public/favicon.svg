@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- a fountain: three arcs of water over a basin -->
+  <g fill="none" stroke="#4c9aff" stroke-width="2.5" stroke-linecap="round">
+    <path d="M16 14 V 6"/>
+    <path d="M10 15 C 10 10, 12 7, 16 6"/>
+    <path d="M22 15 C 22 10, 20 7, 16 6"/>
+  </g>
+  <path d="M6 20 h20 a1 1 0 0 1 1 1 c0 4 -5 7 -11 7 s-11 -3 -11 -7 a1 1 0 0 1 1 -1 z" fill="#4c9aff"/>
+</svg>

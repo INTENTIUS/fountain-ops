@@ -103,8 +103,18 @@ traces somewhere real is the `otelTraces` parameter, in
 [Parameters](/fountain-ops/reference/parameters/).
 :::
 
-## The same build, elsewhere
+## What you just stood up
 
-The other page in this pair is
-[Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/):
-the same build, aimed at a cluster k3d did not create.
+In the words the rest of the docs use: `target=k3d`, `tier=light` — a cluster
+this repo created on your machine, one app replica, a single-instance
+Postgres, an emulated data plane, a nightly backup to an emulated S3. Every
+one of those choices is a parameter with the default you just used;
+[What you are deploying](/fountain-ops/getting-started/overview/) names them
+all.
+
+Two directions from here:
+
+- [Make it durable](/fountain-ops/getting-started/make-it-durable/) — two
+  clustered replicas over a replicated Postgres, on this same laptop
+- [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/)
+  — the same build, aimed at a cluster k3d did not create

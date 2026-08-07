@@ -401,7 +401,18 @@ apply: build _require-cluster
 # Wait for both rollouts. Fountain migrates at boot, so give it room.
 [doc("Wait for both rollouts. Fountain migrates at boot, so give it room.")]
 wait: _require-cluster
-    kubectl rollout status deployment/fountain-postgres -n "{{ns}}" --timeout=120s
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Which database to wait for depends on the seam: bundled is a Deployment,
+    # cnpg is a Cluster, and a referenced Postgres is not ours to wait for.
+    # Asking the cluster what is actually there — apply has already run by the
+    # time this does — is what lets `just params="--param postgres=cnpg" up`
+    # be one command instead of a sequence with this step hand-replaced.
+    if kubectl get deployment fountain-postgres -n "{{ns}}" >/dev/null 2>&1; then
+      kubectl rollout status deployment/fountain-postgres -n "{{ns}}" --timeout=120s
+    elif kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" >/dev/null 2>&1; then
+      kubectl wait --for=condition=Ready cluster.postgresql.cnpg.io/fountain-pg -n "{{ns}}" --timeout=300s
+    fi
     kubectl rollout status deployment/fountain -n "{{ns}}" --timeout=300s
 
 # ── verify ─────────────────────────────────────────────────────────────────

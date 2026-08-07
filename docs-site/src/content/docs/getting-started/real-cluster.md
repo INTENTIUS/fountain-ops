@@ -15,7 +15,8 @@ this page. Its short version, for this path:
 
 | | |
 |---|---|
-| `target=kubernetes`, applied and served | **On a k3d cluster standing in for a real one.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward |
+| `target=kubernetes`, applied and served | **On a k3d cluster standing in for a real one.** `postgres=reference` against a Postgres in another namespace that chant never created, `ingress=ingress` in front of a real nginx controller, `/health/ready` answering `{"database":"ok"}` through the Ingress rather than a port-forward. `just e2e-k8s` re-checks this on a three-node stand-in with Traefik as the class |
+| `kubernetes` + `ha`, applied and served | **On the same stand-in.** Two replicas across nodes, Erlang-clustered through the headless Service, PDB applied, served through the Ingress — `just e2e-k8s` runs it after `light`, so the in-place upgrade is the tested path |
 | A managed cluster — EKS, GKE, AKS | **Never.** [#23](https://github.com/INTENTIUS/fountain-ops/issues/23) |
 | `tls=cert-manager` | cert-manager installs and is Available. **No certificate has been issued**, here or anywhere |
 | `secrets=infisical` | Builds, and a real API server accepts it. No operator has reconciled it |
@@ -38,8 +39,9 @@ ingress class positionally and already defaults to `kubernetes ha nginx`, so
 bare `just preview` is the same command.
 
 `kubernetes` + `ha` builds; `k3d` + `ha` is refused, and the difference is
-entirely in the seam defaults. Nothing here has applied `kubernetes` + `ha`
-anywhere.
+entirely in the seam defaults. `just e2e-k8s` has applied `kubernetes` + `ha`
+to a three-node stand-in and served it through an Ingress; no one has applied
+it to a cluster k3d did not create.
 
 ## The foreign-cluster guard
 

@@ -65,9 +65,9 @@ Each dependency is a **seam** with a mode: `postgres`, `secrets`, `ingress`, `tl
 
 | | |
 |---|---|
-| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, sign in and end up with the first admin; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it |
+| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, sign in and end up with the first admin; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it. `just e2e-k8s` applies `target=kubernetes` — `light`, then `ha` over it — to a three-node stand-in and serves both through a real Ingress |
 | **Does not work** | Completing a turn — sometimes, and it is a race that a faster machine loses more often ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67), [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)) |
-| **Builds only** | `target=kubernetes` and the seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
+| **Builds only** | The seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) — and everything on a **managed** cluster ([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)) |
 
 A backup nobody has restored is a hypothesis, so the backup row says what it says.
 

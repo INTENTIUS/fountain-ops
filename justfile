@@ -563,6 +563,185 @@ e2e:
     echo ""
     echo "  ✓ e2e: every documented claim held, from nothing, and the cluster is gone."
 
+# The target=kubernetes claims, re-checked on a cluster this recipe treats as
+# foreign. `just e2e` proves the k3d target; the rows it cannot reach are the
+# ones about a cluster this repo did not create — a referenced Postgres, an
+# Ingress class the cluster already answers to, two replicas that must find
+# each other across nodes. This stands up a *separate* multi-node k3d cluster
+# as the stand-in (still not a managed cluster — #23), and never touches the
+# ambient kubectl context: every kubectl call names its context explicitly,
+# which is also why it needs no ALLOW_FOREIGN_CLUSTER.
+#
+# The stand-in differs from `just up`'s cluster on purpose:
+#   - three nodes, so the ha replicas can actually land on different machines
+#   - k3s's bundled Traefik is the ingress controller, so ingressClassName is
+#     exercised against a class this recipe did not install
+#   - Postgres runs in another namespace, deployed here but not by chant, and
+#     the platform Secret is created by hand — which is exactly what
+#     postgres=reference and secrets=reference mean
+#
+# light applies first and ha applies over it, so the in-place light→ha upgrade
+# is exercised as a side effect rather than assumed.
+k8s_cluster := "fountain-k8s-stand-in"
+k8s_port    := "8091"
+k8s_host    := "fountain.k8s.test"
+
+[doc("Stand up a multi-node stand-in cluster, prove target=kubernetes light and ha serve, tear down.")]
+e2e-k8s:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ctx="k3d-{{k8s_cluster}}"
+    fail() { echo ""; echo "  ✗ e2e-k8s: $1" >&2; echo "    cluster left up for inspection — 'k3d cluster delete {{k8s_cluster}}' when finished" >&2; exit 1; }
+    step() { echo ""; echo "── $1 ─────────────────────────────────────"; }
+    kc() { kubectl --context "$ctx" "$@"; }
+
+    step "a fresh cluster that is not ours"
+    if ! k3d cluster list "{{k8s_cluster}}" >/dev/null 2>&1; then
+      k3d cluster create "{{k8s_cluster}}" --servers 1 --agents 2 \
+        -p "{{k8s_port}}:80@loadbalancer" --wait >/dev/null
+    fi
+    for i in $(seq 1 60); do
+      kc get --raw /readyz >/dev/null 2>&1 && break
+      [ "$i" = 60 ] && fail "apiserver never became ready"
+      sleep 2
+    done
+    # k3s installs Traefik asynchronously; the class is the thing the build
+    # names, so it existing is part of the claim.
+    for i in $(seq 1 60); do
+      kc get ingressclass traefik >/dev/null 2>&1 && break
+      [ "$i" = 60 ] && fail "the traefik ingressclass never appeared"
+      sleep 2
+    done
+    echo "  ✓ 3 nodes, ingressclass traefik"
+
+    # postgres=reference means "it already exists, here is how to reach it".
+    # So it has to already exist: a plain Postgres in another namespace,
+    # deployed by kubectl here and never by chant.
+    step "a Postgres chant does not manage"
+    kc create namespace pg-external --dry-run=client -o yaml | kc apply -f - >/dev/null
+    pgpass="$(openssl rand -hex 16)"
+    if ! kc get secret pg-credentials -n pg-external >/dev/null 2>&1; then
+      kc create secret generic pg-credentials -n pg-external \
+        --from-literal=POSTGRES_PASSWORD="$pgpass" >/dev/null
+    else
+      pgpass="$(kc get secret pg-credentials -n pg-external -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)"
+    fi
+    kc apply -n pg-external -f - >/dev/null <<'MANIFEST'
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata: { name: postgres }
+    spec:
+      replicas: 1
+      selector: { matchLabels: { app: postgres } }
+      template:
+        metadata: { labels: { app: postgres } }
+        spec:
+          containers:
+          - name: postgres
+            image: postgres:16
+            env:
+            - { name: POSTGRES_USER, value: fountain }
+            - { name: POSTGRES_DB, value: fountain }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: pg-credentials, key: POSTGRES_PASSWORD } }
+            ports: [{ containerPort: 5432 }]
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata: { name: postgres }
+    spec:
+      selector: { app: postgres }
+      ports: [{ port: 5432, targetPort: 5432 }]
+    MANIFEST
+    kc rollout status deployment/postgres -n pg-external --timeout=180s >/dev/null \
+      || fail "the external Postgres never became ready"
+    echo "  ✓ postgres:16 in pg-external, no TLS — which is why databaseSsl=false below"
+
+    # secrets=reference means the cluster is the source of truth, so the
+    # Secret is created by hand — same keys `just secret` mints, but
+    # DATABASE_URL points at the referenced Postgres, not the bundled one.
+    step "the platform Secret, by hand"
+    kc create namespace "{{ns}}" --dry-run=client -o yaml | kc apply -f - >/dev/null
+    if ! kc get secret "{{secret}}" -n "{{ns}}" >/dev/null 2>&1; then
+      kc create secret generic "{{secret}}" -n "{{ns}}" \
+        --from-literal=SECRET_KEY_BASE="$(openssl rand -base64 48 | tr -d '\n')" \
+        --from-literal=MASTER_SECRETS_KEY="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')" \
+        --from-literal=POSTGRES_PASSWORD="$pgpass" \
+        --from-literal=DATABASE_URL="postgres://fountain:${pgpass}@postgres.pg-external.svc.cluster.local:5432/fountain" \
+        --from-literal=SPRITES_TOKEN="local-dev-not-a-real-token" \
+        --from-literal=AWS_ACCESS_KEY_ID="local-dev-not-a-real-key" \
+        --from-literal=AWS_SECRET_ACCESS_KEY="local-dev-not-a-real-secret" \
+        --from-literal=AWS_DEFAULT_REGION="us-east-1" >/dev/null
+    fi
+    echo "  ✓ {{secret}} exists, DATABASE_URL → pg-external"
+
+    P="--param target=kubernetes --param host={{k8s_host}} --param scheme=http \
+       --param ingressClassName=traefik --param databaseSsl=false"
+
+    step "kubernetes/light: build, dry-run, apply, serve through the Ingress"
+    npx chant build src -o dist/fountain-k8s-light.yaml --format yaml $P >/dev/null 2>&1 \
+      || fail "the light build did not render"
+    kc apply -f dist/fountain-k8s-light.yaml --dry-run=server >/dev/null \
+      || fail "the API server rejected the light manifests"
+    kc apply -f dist/fountain-k8s-light.yaml >/dev/null
+    kc rollout status deployment/fountain -n "{{ns}}" --timeout=300s >/dev/null \
+      || fail "the light rollout never completed"
+    # Through the Ingress, not a port-forward: this is what proves the class,
+    # the rule and the controller agree. Traefik picks the new Ingress up
+    # asynchronously, so the first answers can be its own 503 — retried, and
+    # only the body decides.
+    ok=""
+    for i in $(seq 1 30); do
+      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:{{k8s_port}}/health/ready" 2>/dev/null)" \
+        && printf '%s' "$body" | grep -q '"database":"ok"' && ok=1 && break
+      sleep 2
+    done
+    [ "$ok" = 1 ] || fail "/health/ready through the Ingress did not report the database ok"
+    r="$(kc get pod -n "{{ns}}" -l app.kubernetes.io/component=server \
+         -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}')"
+    [ "$r" = "0" ] || fail "the app restarted $r time(s) before serving"
+    echo "  ✓ light serves {\"database\":\"ok\"} through the Traefik Ingress, restartCount 0"
+
+    step "kubernetes/ha: two replicas that find each other"
+    npx chant build src -o dist/fountain-k8s-ha.yaml --format yaml $P --param tier=ha >/dev/null 2>&1 \
+      || fail "the ha build did not render"
+    kc apply -f dist/fountain-k8s-ha.yaml --dry-run=server >/dev/null \
+      || fail "the API server rejected the ha manifests"
+    kc apply -f dist/fountain-k8s-ha.yaml >/dev/null
+    kc rollout status deployment/fountain -n "{{ns}}" --timeout=300s >/dev/null \
+      || fail "the ha rollout never completed"
+    ready="$(kc get deployment fountain -n "{{ns}}" -o jsonpath='{.status.readyReplicas}')"
+    [ "$ready" = "2" ] || fail "expected 2 ready replicas, got ${ready:-0}"
+    kc get pdb fountain -n "{{ns}}" >/dev/null || fail "the PodDisruptionBudget is missing"
+    # libcluster logs the connect on the side that initiated it, and the line
+    # only prints after :net_kernel.connect_node returned true — a formed
+    # distribution connection, not an attempt. The rollout being ready and the
+    # connect having happened are different moments — readiness is the HTTP
+    # probe, and the headless DNS both sides poll answers on its own clock —
+    # so this waits rather than sampling once.
+    connected=0
+    for i in $(seq 1 30); do
+      for p in $(kc get pods -n "{{ns}}" -l app.kubernetes.io/component=server -o name); do
+        kc logs "$p" -n "{{ns}}" 2>/dev/null | grep -q '\[libcluster:fountain\] connected to' && connected=1
+      done
+      [ "$connected" = 1 ] && break
+      sleep 2
+    done
+    [ "$connected" = 1 ] || fail "neither replica logged a libcluster connect — the Erlang cluster did not form"
+    ok=""
+    for i in $(seq 1 30); do
+      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:{{k8s_port}}/health/ready" 2>/dev/null)" \
+        && printf '%s' "$body" | grep -q '"database":"ok"' && ok=1 && break
+      sleep 2
+    done
+    [ "$ok" = 1 ] || fail "/health/ready through the Ingress stopped answering after the ha rollout"
+    echo "  ✓ 2 replicas, Erlang-clustered, PDB present, still serving through the Ingress"
+
+    step "tearing down"
+    k3d cluster delete "{{k8s_cluster}}" >/dev/null 2>&1
+    echo ""
+    echo "  ✓ e2e-k8s: target=kubernetes light and ha applied and served, and the stand-in is gone."
+
 # Hold a port open to reach it from the browser.
 [doc("Hold a port open to reach it from the browser, on :4000.")]
 forward: _require-cluster

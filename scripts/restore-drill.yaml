@@ -84,9 +84,11 @@ spec:
           args:
             - |
               set -euo pipefail
-              # A separate database on the same server. pg_restore into the
-              # live one would be the opposite of a non-destructive drill.
-              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$DRILL_DB\""
+              # A separate database on the same server, created by the recipe
+              # before this Job ran — creating it needs CREATEDB, which the
+              # app user this container connects as does not have at cnpg.
+              # pg_restore into the live one would be the opposite of a
+              # non-destructive drill.
               TARGET="${DATABASE_URL%%\?*}"
               TARGET="${TARGET%/*}/$DRILL_DB"
               pg_restore --no-owner --no-privileges --dbname "$TARGET" /work/restore.dump
@@ -96,11 +98,17 @@ spec:
           env:
             - name: DRILL_DB
               value: __DRILL_DB__
+            # The same source the app reads its URL from, not always the
+            # platform Secret: at postgres=cnpg the operator mints
+            # fountain-pg-app and the platform Secret's DATABASE_URL points at
+            # a service that does not exist. `just restore-drill` resolves the
+            # right pair the same way `wait` resolves its target — by asking
+            # the cluster what is there.
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: __SECRET__
-                  key: DATABASE_URL
+                  name: __DB_SECRET__
+                  key: __DB_KEY__
           volumeMounts:
             - name: work
               mountPath: /work

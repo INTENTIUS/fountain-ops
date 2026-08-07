@@ -61,55 +61,17 @@ just pg-logs      # the database
 
 `just up` is safe to re-run. It will not create a second cluster, and it will not mint a second secret over the first.
 
-## Status
+## Everything else, once, on the site
 
-**[The status page](https://intentius.io/fountain-ops/status/) is authoritative.** Anywhere something is described in the present tense, what is true is what that says. In short:
+The README stops here so nothing in it can drift from the pages that are
+asserted against reality:
 
-| | |
-|---|---|
-| **Verified** | `target=k3d tier=light` stands up and serves; bundled Postgres connects; you can register, sign in and end up with the first admin; a sandbox is provisioned and populated; the backup job dumps and uploads to an emulated S3. With `just operators`: `postgres=cnpg` reconciles a real database the app migrates into, and `k3d tier=ha` stands up two clustered replicas over it. `just e2e-k8s` applies `target=kubernetes` — `light`, then `ha` over it — to a three-node stand-in and serves both through a real Ingress |
-| **Does not work** | Completing a turn — sometimes, and it is a race that a faster machine loses more often ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67), [spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)) |
-| **Builds only** | The seams whose controllers are still not installed — `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) — and everything on a **managed** cluster ([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)) |
+- **[Status](https://intentius.io/fountain-ops/status/)** — what is verified, what only builds, what does not work. Authoritative over every other page, this one included.
+- **[What you are deploying](https://intentius.io/fountain-ops/getting-started/overview/)** — the pieces, the four shapes, and the four words the docs lean on (target, tier, size, seam).
+- **[The repo](https://intentius.io/fountain-ops/reference/repo-layout/)** — where everything lives, and the one environment variable.
+- **[CI and the site](https://intentius.io/fountain-ops/reference/ci/)** — `just check` and `just e2e` are literally what CI runs.
 
-A backup nobody has restored is a hypothesis, so the backup row says what it says.
-
-## The shape of it, in four words
-
-**Target** is where it runs (`k3d` · `kubernetes`). **Tier** is how durable (`light` · `ha`). **Size** (`small` · `medium` · `large`) is how much machine one pod asks for — orthogonal, because a bigger pod is not a more durable one. Every dependency is a **seam** with a mode — `postgres`, `secrets`, `ingress`, `tls`, `backups`, `monitoring`, `dataPlane`, `storage` — and the target picks defaults that make sense where it runs. Combinations that would apply cleanly and mean something other than they say are refused with an error naming the parameter that fixes it.
-
-→ [Targets and tiers](https://intentius.io/fountain-ops/reference/targets-and-tiers/) · [Seams](https://intentius.io/fountain-ops/reference/seams/) · [Build parameters](https://intentius.io/fountain-ops/reference/parameters/)
-
-## Layout
-
-The manifests are compiled from TypeScript by [chant](https://intentius.io/chant) — that is why the same parameters always produce the same resources, and why incoherent combinations are refused at build time. You never invoke it directly.
-
-```
-chant.config.ts      lexicons, params, ownership, lint
-justfile             every target you need
-ci/pipeline.ts       this repo's own CI, declared
-pages/pipeline.ts    the Pages workflow, declared the same way
-workflows/shared.ts  the pins both workflows share
-ops/                 the deploy Op, for behold's Run button
-scripts/local/       cluster lifecycle, where behold looks for it
-docs-site/           the published site — Astro + Starlight
-src/
-  params.ts          the one place build params are read
-  lib/targets.ts     target -> seam defaults
-  lib/tiers.ts       tier -> durability, and the replica refusal
-  lib/seams.ts       seam modes, and the combinations that are refused
-  app/               Deployment, Service, Namespace, headless Service
-  data/              the bundled Postgres, the CNPG cluster, and spritzer
-  ingress/           Ingress, Certificate, and the Traefik IngressRoutes
-  secrets/           the InfisicalSecret
-  backup/            the pg_dump CronJob
-  observability/     ServiceMonitor, PrometheusRule
-```
-
-`just check` is what CI's check job runs and `just e2e` is what its e2e job runs — both literally, so what you run locally is what gates the branch. `just e2e` stands up from nothing, asserts every claim above including the backup restore and the conversation gate, and tears down.
-
-Both workflows are rendered from TypeScript and `just ci-check` fails if either committed YAML has drifted. The site is `just site`; `just site-dev` serves it locally.
-
-No resource file reads `process.env` — every input is a declared build parameter. One exception, and it is worth knowing: `chant.config.ts` reads `FOUNTAIN_ENV` for `ownership.env`, because ownership is read before build parameters exist. Set both, or neither. [INTENTIUS/chant#1396](https://github.com/INTENTIUS/chant/issues/1396).
+The roadmap is [the issues](https://github.com/INTENTIUS/fountain-ops/issues) — there is no roadmap page to rot.
 
 ## Licence
 

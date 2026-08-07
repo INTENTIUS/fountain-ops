@@ -547,7 +547,9 @@ e2e:
     # race: pins ≤ v0.5.x let the emulator's echo complete with exit 0, and
     # v0.6.0 fails it :command_exited on purpose — the runtime exits before a
     # prompt is ever written (fountain#606), which against the emulator is
-    # every turn. verify-conversation accepts both shapes and says which.
+    # every turn — and v0.6.1 keeps the runtime's exit code again
+    # (fountain#608), so the echo's 0 completes. verify-conversation accepts
+    # every vintage's shape and says which.
     #
     # So no result can be pinned. What is pinned is that the outcome matches
     # the path: reattach implies orphaned, no reattach implies the emulator's
@@ -831,7 +833,8 @@ verify-email EMAIL: _require-cluster
     # broadcasts the verification (the waiting page subscribes to it), and
     # Release.with_repo starts only the Repo — so the task dies with
     # `unknown registry: Fountain.PubSub` before it can report
-    # (BinaryBourbon/fountain#614). Starting a
+    # (BinaryBourbon/fountain#614; upstream skips the broadcast from v0.6.1,
+    # and this stays as the defense for a v0.6.0 pin). Starting a
     # local instance of the registry makes the broadcast a no-op with no
     # subscribers instead of a crash. Harmless on earlier pins, which never
     # touch it.
@@ -1040,10 +1043,11 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
     # What a finished turn looks like depends on the plane and the pin. The
     # emulator echoes the runtime command and exits — it never writes a
-    # prompt — and fountain v0.6.0 started failing exactly that shape
-    # (:command_exited, fountain#606) where earlier pins let it complete
-    # with exit 0. Both are the emulator behaving as documented, so both
-    # pass here and the line says which one you got. A real plane still has
+    # prompt — and exactly fountain v0.6.0 failed that shape
+    # (:command_exited, fountain#606) where every other pin completes with
+    # the echo's exit 0 (v0.6.1 keeps the runtime's exit code, fountain#608).
+    # All of it is the emulator behaving as documented, so both shapes pass
+    # here and the line says which one you got. A real plane still has
     # to exit 0 and stream output; #606 is about runtimes that die early,
     # which a real runtime does not.
     if [ "$plane" = "spritzer" ]; then

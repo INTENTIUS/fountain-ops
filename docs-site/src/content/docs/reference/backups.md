@@ -32,6 +32,13 @@ job, because it looks like a backup.
 Retention comes from the tier rather than the seam because it is a durability
 property, not a question of who provides the store.
 
+The dump reads the same `DATABASE_URL` source the app does — the platform
+Secret ordinarily, the operator's `fountain-pg-app` at `postgres=cnpg`. It
+shipped reading the platform Secret unconditionally, which at cnpg names the
+bundled service that does not exist: the dump failed on DNS after the
+schedule fired, which is the worst place to learn a backup never ran. Taken
+and drill-verified against all three postgres modes since.
+
 ## Where it uploads
 
 On k3d the `storage` seam defaults to `floci`, an in-cluster S3-compatible
@@ -79,6 +86,16 @@ the right size uploads cleanly, and you find out during the outage.
 The drill restores the newest object into a throwaway database, counts the
 tables against the live one, and drops the throwaway whether it passed or
 failed. Nothing writes to the live database at any point.
+
+It works against whichever database the seam produced, resolved the same way
+`just wait` resolves its target: the bundled Deployment or the CNPG primary
+when one is in the cluster, and for a referenced Postgres a short-lived pod
+that reads `DATABASE_URL` from the same Secret the app does — the connection
+string never appears in a pod spec or a shell history. The throwaway is
+created by the recipe rather than the drill Job, because only the recipe side
+can run as someone with `CREATEDB`: at cnpg the app user deliberately cannot,
+and the bundled path only ever got away with it because its app user is the
+image's superuser.
 
 ```
   store:       http://fountain-floci.fountain.svc.cluster.local:4566 / fountain-backups

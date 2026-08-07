@@ -215,10 +215,13 @@ what a real S3 bucket wants. A laptop-style `localhost:4566` leaves the upload
 container talking to itself. `just storage-init` only ever creates the emulated
 bucket and no-ops here.
 
-`just restore-drill` execs `deploy/fountain-postgres` for its live table count,
-so it runs against the bundled Postgres only. There is no drill for a referenced
-database yet, which means on this target the backup is unverified in exactly the
-way the drill exists to fix.
+`just restore-drill` works against whichever database the seam produced: it
+execs the bundled Deployment or the CNPG primary when one is in the cluster,
+and for a referenced Postgres runs its queries from a short-lived pod reading
+`DATABASE_URL` from the same Secret the app does — so the connection string
+never lands in a pod spec. Restored-and-matched has been exercised against
+all three on k3d;
+[Backups](/fountain-ops/reference/backups/#the-restore-drill) has the shape.
 
 `barman-pitr` needs `postgres=cnpg` — WAL archiving is a property of the CNPG
 cluster, and there is nothing to archive from a Postgres chant does not manage.

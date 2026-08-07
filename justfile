@@ -1097,6 +1097,37 @@ restore-drill: _require-cluster
     envval() { kubectl get cronjob "$cj" -n "{{ns}}" -o jsonpath="{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=='$1')].value}" 2>/dev/null; }
     bucket="$(envval BUCKET)"; ep="$(envval S3_ENDPOINT)"; ps="$(envval S3_FORCE_PATH_STYLE)"
 
+    # Which database, and how to ask it things. Resolved from the cluster the
+    # same way `wait` picks its target: the bundled Deployment, the CNPG
+    # primary, or — for a referenced Postgres that is not in the cluster at
+    # all — a short-lived pod reading DATABASE_URL from the same Secret the
+    # app does, so the connection string never lands in a pod spec or a shell
+    # history. The drill Job below gets the same secret/key pair, because at
+    # cnpg the platform Secret's DATABASE_URL names a service that does not
+    # exist, and the operator's fountain-pg-app is the one that is true.
+    if kubectl get deployment fountain-postgres -n "{{ns}}" >/dev/null 2>&1; then
+      dbsecret="{{secret}}"; dbkey="DATABASE_URL"; createowner=""
+      pgquery() { kubectl exec -n "{{ns}}" deploy/fountain-postgres -- \
+        psql -U fountain -d fountain -tAc "$1"; }
+    elif kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" >/dev/null 2>&1; then
+      dbsecret="fountain-pg-app"; dbkey="uri"
+      # pgquery runs as the postgres superuser here, so the throwaway must be
+      # owned by the app user or pg_restore (connecting as it) cannot create a
+      # single table. The bundled path never sees this because its app user IS
+      # the image's superuser — one more thing that path quietly got for free.
+      createowner=" OWNER fountain"
+      primary="$(kubectl get cluster.postgresql.cnpg.io fountain-pg -n "{{ns}}" -o jsonpath='{.status.currentPrimary}')"
+      pgquery() { kubectl exec -n "{{ns}}" "pod/$primary" -c postgres -- \
+        psql -U postgres -d fountain -tAc "$1"; }
+    else
+      dbsecret="{{secret}}"; dbkey="DATABASE_URL"; createowner=""
+      pgquery() {
+        ov="$(jq -n --arg secret "$dbsecret" --arg key "$dbkey" --arg sql "$1" '{spec:{restartPolicy:"Never",containers:[{name:"psql",image:"postgres:16",command:["sh","-c"],args:["psql \"$DATABASE_URL\" -tAc \"$PSQL_SQL\""],env:[{name:"DATABASE_URL",valueFrom:{secretKeyRef:{name:$secret,key:$key}}},{name:"PSQL_SQL",value:$sql}]}]}}')"
+        kubectl run "fountain-drill-sql-$(date +%s)" --rm -i --restart=Never \
+          -n "{{ns}}" --image=postgres:16 --quiet --overrides "$ov"
+      }
+    fi
+
     drilldb="fountain_drill_$(date +%s)"
     job="fountain-drill-$(date +%s)"
     echo "  store:       ${ep:-aws} / $bucket"
@@ -1104,21 +1135,24 @@ restore-drill: _require-cluster
 
     # What the live database has, to compare against. A hardcoded number would
     # pass a restore of last month's schema.
-    live="$(kubectl exec -n "{{ns}}" deploy/fountain-postgres -- \
-      psql -U fountain -d fountain -tAc \
-      "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null | tr -d '[:space:]')"
+    live="$(pgquery "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null | tr -d '[:space:]')"
     echo "  live tables: $live"
 
     cleanup() {
       kubectl delete job "$job" -n "{{ns}}" --ignore-not-found >/dev/null 2>&1 || true
       # Always drop the throwaway, pass or fail. A drill that leaves a database
       # behind is a drill nobody runs twice.
-      kubectl exec -n "{{ns}}" deploy/fountain-postgres -- \
-        psql -U fountain -d fountain -c "DROP DATABASE IF EXISTS \"$drilldb\"" >/dev/null 2>&1 || true
+      pgquery "DROP DATABASE IF EXISTS \"$drilldb\"" >/dev/null 2>&1 || true
     }
     trap cleanup EXIT
 
+    # Created here rather than in the Job, because only this side knows who
+    # has CREATEDB: the Job connects as the app user, and at cnpg the app user
+    # deliberately cannot create databases.
+    pgquery "CREATE DATABASE \"$drilldb\"$createowner" >/dev/null
+
     sed -e "s|__JOB__|$job|g" -e "s|__NS__|{{ns}}|g" -e "s|__SECRET__|{{secret}}|g" \
+        -e "s|__DB_SECRET__|$dbsecret|g" -e "s|__DB_KEY__|$dbkey|g" \
         -e "s|__DRILL_DB__|$drilldb|g" -e "s|__BUCKET__|$bucket|g" \
         -e "s|__S3_ENDPOINT__|$ep|g" -e "s|__PATH_STYLE__|${ps:-false}|g" \
         scripts/restore-drill.yaml | kubectl apply -f - >/dev/null

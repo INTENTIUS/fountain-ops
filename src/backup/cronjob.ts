@@ -76,8 +76,17 @@ if [ "$SIZE" -lt 10240 ]; then echo "FAIL: dump is only \${SIZE} bytes, refusing
 echo "$OUT" > /work/latest`,
                       ],
                       env: [
-                        // The same URL the app uses, from the same Secret.
-                        { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: secretName, key: "DATABASE_URL" } } },
+                        // The same URL the app uses, FROM THE SAME SOURCE —
+                        // which is not always the platform Secret. At
+                        // postgres=cnpg the operator mints fountain-pg-app
+                        // and the platform Secret's DATABASE_URL names the
+                        // bundled service, which does not exist; a dump over
+                        // it fails on DNS after the schedule fires, which is
+                        // the worst place to learn your backup never ran.
+                        // Mirrors app/deployment.ts's databaseUrl exactly.
+                        seams.postgres === "cnpg"
+                          ? { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: "fountain-pg-app", key: "uri" } } }
+                          : { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: secretName, key: "DATABASE_URL" } } },
                       ],
                       volumeMounts: [{ name: "work", mountPath: "/work" }],
                       resources: { requests: { cpu: "50m", memory: "128Mi" }, limits: { memory: "512Mi" } },

@@ -25,7 +25,10 @@ hero:
 Deploy fountain for me.
 
 Clone https://github.com/INTENTIUS/fountain-ops and work from it.
-`just doctor` says what this machine is missing and how to install it.
+Everything is driven through `just`, which its own preflight cannot check
+for — install it first if this machine lacks it (`brew install just`, or a
+pinned release from https://github.com/casey/just/releases).
+`just doctor` says what else is missing and how to install it.
 Then:  npm install && just up
 When it reports green, run `just forward` and tell me to open
 http://localhost:4000/auth/register — my first account self-verifies and

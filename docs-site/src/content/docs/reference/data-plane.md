@@ -45,20 +45,16 @@ turn is abandoned:
 event: stage  reattach  interrupted  {"reason":"list_sessions_failed","outcome":"turn_orphaned"}
 ```
 
-If dispatch gets there first, the sandbox is still `pending`, fountain
-provisions fresh, and the turn completes with the echo's `exit_code: 0` —
-on every pin except exactly v0.6.0. That version failed any turn whose
-runtime exited before writing a prompt (fountain#606), which against an
-emulator that echoes and exits is every turn:
-
-```
-event: stage  turn  failed  {"reason":":command_exited"}
-```
-
-v0.6.1 kept the runtime's exit code instead (fountain#608), so the echo's 0
-completes the turn again. `just verify-conversation` accepts whichever
-terminal shape the pinned image produces and says which one you got — and a
-completed turn is still only the echo, never a model.
+If dispatch gets there first, the sandbox is still `pending` and fountain
+provisions fresh. How that fresh turn *ends* is upstream's business, and it
+is being actively worked on — the shape has changed in three consecutive
+fountain releases, so this page no longer pins it. `just verify-conversation`
+asserts the plumbing (a sandbox requested, a turn dispatched, a terminal
+shape reached) and reports whichever ending it observed. Two things do not
+move with the releases: a completed emulator turn is only the echo, never a
+model, and the reattach arm above is spritzer's boundary
+([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)), not
+fountain's.
 
 :::caution[A faster machine is more likely to fail]
 The race is won by speed, so this gets *more* likely on better hardware.

@@ -30,7 +30,7 @@ about.
 
 | | |
 |---|---|
-| Completing a turn | **Sometimes, and it is a race — with a one-version hole.** If the sandbox reaches `ready` before fountain dispatches, the reattach path is orphaned by spritzer's `426` on `list_sessions` ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)). If dispatch wins, the fresh turn completes with the echo's exit 0 — except on exactly v0.6.0, which failed every emulator turn `:command_exited` (fountain#606) until v0.6.1 kept the runtime's exit code instead (fountain#608). `just verify-conversation` accepts every vintage's shape and says which fired. A completed turn is still only spritzer echoing the command back, never a model ([#67](https://github.com/INTENTIUS/fountain-ops/issues/67) has the race history; the v0.6.1 native-arch images may have shifted which side arm64 wins) |
+| Completing a turn | **Under active repair upstream, and this page has stopped keeping score.** Turn completion is being worked on in fountain right now, and its behavior against the emulator has changed in three consecutive releases — so pinning the current shape here would rot within days, in whichever direction. What stays true and ours: the reattach arm of the provisioning race dies on spritzer's `426` ([spritzer#18](https://github.com/INTENTIUS/spritzer/issues/18)), a completed emulator turn is only the echo and never a model, and `just verify-conversation` asserts the plumbing while *reporting* whichever ending it observed. [#67](https://github.com/INTENTIUS/fountain-ops/issues/67) holds the race history; the score resumes when upstream's work settles |
 
 ## Builds, unexercised
 

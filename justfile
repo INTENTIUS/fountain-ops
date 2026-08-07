@@ -537,17 +537,23 @@ e2e:
     # If provisioning marks the sandbox `ready` before the ConversationServer
     # dispatches, it takes the reattach path — and reattach calls list_sessions,
     # which spritzer answers 426 (spritzer#18), orphaning the turn. If dispatch
-    # gets there first, it provisions fresh and the turn runs to exit 0.
+    # gets there first, it provisions fresh and the turn runs.
     #
     # Whoever wins is decided by machine speed, so a FASTER machine is MORE
     # likely to see the failure. Observed 5/5 orphaned on an M-series laptop and
     # 2/2 completed on a GitHub runner, with identical image digests. #67.
     #
-    # So neither result can be pinned. What is pinned is that the two agree:
-    # reattach implies orphaned, and no reattach implies a completed turn.
-    # Anything else — reattach that somehow succeeds, or no reattach and no exit
-    # 0 — is new, and worth stopping for. That is stricter than asserting
-    # provisioning alone and it holds on any machine.
+    # What a fresh turn's end looks like is a vintage question on top of the
+    # race: pins ≤ v0.5.x let the emulator's echo complete with exit 0, and
+    # v0.6.0 fails it :command_exited on purpose — the runtime exits before a
+    # prompt is ever written (fountain#606), which against the emulator is
+    # every turn. verify-conversation accepts both shapes and says which.
+    #
+    # So no result can be pinned. What is pinned is that the outcome matches
+    # the path: reattach implies orphaned, no reattach implies the emulator's
+    # documented terminal shape for this pin. Anything else — a reattach that
+    # somehow succeeds, or a fresh turn ending some third way — is new, and
+    # worth stopping for.
     step "the conversation gate, and that its outcome matches its path"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
@@ -559,9 +565,13 @@ e2e:
       echo "  ✓ reattach path taken, turn orphaned as spritzer#18 describes ($(uname -m))"
     else
       printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
-        || { echo "$out" | tail -20; fail "no reattach, so the turn should have completed, and it did not"; }
-      echo "  ✓ fresh provision, turn completed ($(uname -m))"
-      echo "    (spritzer echoes the command back — this is plumbing, not a model reply)"
+        || { echo "$out" | tail -20; fail "no reattach, and the turn ended in neither of the emulator's documented shapes"; }
+      if printf '%s' "$out" | grep -q "command_exited"; then
+        echo "  ✓ fresh provision, turn failed :command_exited as v0.6.0 does against the emulator ($(uname -m))"
+      else
+        echo "  ✓ fresh provision, turn completed ($(uname -m))"
+        echo "    (spritzer echoes the command back — this is plumbing, not a model reply)"
+      fi
     fi
 
     # Every seam that needs a CRD, against a real API server rather than
@@ -816,12 +826,21 @@ verify-email EMAIL: _require-cluster
     # so the eval gets exactly the env the app runs with — the same Secret,
     # the same DATABASE_URL — and cannot drift from it. Probes and ports come
     # off because this serves nothing and exits.
+    #
+    # The PubSub preamble exists because fountain v0.6.0's verify_email
+    # broadcasts the verification (the waiting page subscribes to it), and
+    # Release.with_repo starts only the Repo — so the task dies with
+    # `unknown registry: Fountain.PubSub` before it can report
+    # (BinaryBourbon/fountain#614). Starting a
+    # local instance of the registry makes the broadcast a no-op with no
+    # subscribers instead of a crash. Harmless on earlier pins, which never
+    # touch it.
     spec="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -c --arg e "$EMAIL" '
       .spec.template.spec
       | .restartPolicy = "Never"
       | .containers |= [ .[0]
           | .name = "eval"
-          | .command = ["/app/bin/fountain_server", "eval", "Fountain.Release.verify_email(\"\($e)\")"]
+          | .command = ["/app/bin/fountain_server", "eval", "{:ok, _} = Application.ensure_all_started(:phoenix_pubsub); {:ok, _} = Supervisor.start_link([{Phoenix.PubSub, name: Fountain.PubSub}], strategy: :one_for_one); Fountain.Release.verify_email(\"\($e)\")"]
           | del(.args, .livenessProbe, .readinessProbe, .startupProbe, .ports)
         ]')"
 
@@ -1019,9 +1038,30 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     fail() { echo "  ✗ $1" >&2; echo "$ev" | head -30 >&2; exit 1; }
     printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
     printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
-    printf '%s' "$ev" | grep -q '"exit_code\\":0'     || fail "the turn did not exit 0"
-    printf '%s' "$ev" | grep -q 'event: output'       || fail "the turn produced no output at all"
-    echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
+    # What a finished turn looks like depends on the plane and the pin. The
+    # emulator echoes the runtime command and exits — it never writes a
+    # prompt — and fountain v0.6.0 started failing exactly that shape
+    # (:command_exited, fountain#606) where earlier pins let it complete
+    # with exit 0. Both are the emulator behaving as documented, so both
+    # pass here and the line says which one you got. A real plane still has
+    # to exit 0 and stream output; #606 is about runtimes that die early,
+    # which a real runtime does not.
+    if [ "$plane" = "spritzer" ]; then
+      if printf '%s' "$ev" | grep -q '"exit_code\\":0'; then
+        printf '%s' "$ev" | grep -q 'event: output' || fail "the turn produced no output at all"
+        echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0 (pin ≤ v0.5.x)"
+      elif printf '%s' "$ev" | grep -q 'command_exited'; then
+        echo "  ✓ plumbing: sandbox provisioned, turn dispatched; the emulator runtime"
+        echo "    exits before writing a prompt, so fountain ≥ v0.6.0 fails the turn"
+        echo "    (:command_exited, fountain#606). The emulator boundary, not a bug."
+      else
+        fail "the turn neither exited 0 nor failed :command_exited — a new shape, look at it"
+      fi
+    else
+      printf '%s' "$ev" | grep -q '"exit_code\\":0'   || fail "the turn did not exit 0"
+      printf '%s' "$ev" | grep -q 'event: output'     || fail "the turn produced no output at all"
+      echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
+    fi
 
     if [ "{{MODE}}" = "strict" ]; then
       # The claude runtime's terminal event. spritzer never emits one — it

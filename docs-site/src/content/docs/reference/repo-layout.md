@@ -11,6 +11,7 @@ getting-started needs this page.
 ```
 chant.config.ts    lexicons, params, ownership, lint
 justfile           every target you need
+cluster/           the k3d clusters, declared — local, and the e2e-k8s stand-in
 ci/pipeline.ts     this repo's own CI, declared
 pages/pipeline.ts  the Pages workflow, declared the same way
 workflows/shared.ts  pins both workflows share

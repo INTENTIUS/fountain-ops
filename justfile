@@ -501,11 +501,26 @@ e2e:
     step "the account path: register, verify, get a key"
     email="e2e-$(date +%s)@example.com"
     pass="e2e-$(openssl rand -hex 12)"
-    kubectl run e2e-register --rm -i --restart=Never -n "{{ns}}" \
-      --image=curlimages/curl:8.11.1 --quiet -- \
-      curl -fsS -m 15 -X POST "http://fountain.{{ns}}.svc.cluster.local/api/auth/register" \
-      -H 'content-type: application/json' -d "{\"email\":\"$email\",\"password\":\"$pass\"}" \
-      | grep -q user_id || fail "registration did not return a user_id"
+    # Two attempts and a captured body, because `kubectl run -i` can lose a
+    # short-lived pod's output entirely: attach fails, the logs fallback races
+    # the pod's exit, and the response vanishes — a green registration then
+    # reads as "did not return a user_id" with nothing to look at. Seen once
+    # locally (the attach warning, output saved by the fallback) and once on a
+    # CI runner (nothing saved; the retry with identical input passed).
+    # Registering the same address twice cannot double-register: the second
+    # attempt fails on the unique email, which still fails this gate — the
+    # retry only forgives losing the answer, never the act.
+    reg=""
+    for attempt in 1 2; do
+      reg="$(kubectl run "e2e-register-$attempt" --rm -i --restart=Never -n "{{ns}}" \
+        --image=curlimages/curl:8.11.1 --quiet -- \
+        curl -fsS -m 15 -X POST "http://fountain.{{ns}}.svc.cluster.local/api/auth/register" \
+        -H 'content-type: application/json' -d "{\"email\":\"$email\",\"password\":\"$pass\"}" 2>&1 || true)"
+      [ -n "$reg" ] && break
+      echo "  (registration pod produced no output — attach flake, retrying once)"
+    done
+    printf '%s' "$reg" | grep -q user_id \
+      || { printf '%s\n' "$reg" | tail -5; fail "registration did not return a user_id"; }
     just verify-email "$email" | grep -q "is verified" || fail "verify-email did not verify the account"
     echo "  ✓ registered and verified $email"
 

@@ -10,6 +10,16 @@ import { spritzerBaseUrl } from "../data/spritzer";
  *   startup    holds the others off while boot-time migrations run. Fountain
  *              migrates on every start, under an advisory lock, before the
  *              endpoint listens. 150s of headroom.
+ *
+ *              The advisory lock is only true from v0.7.0 (fountain#610).
+ *              Before it, the lock was a row lock on `schema_migrations`,
+ *              which cannot serialize the creation of that table itself — so
+ *              at `ha` (replicas: 2) against a *fresh* database both replicas
+ *              entered the migrator at once and the loser died on
+ *              `pg_type_typname_nsp_index`, restarted, and succeeded. That is
+ *              the benign `RESTARTS 1` on a first `ha` deploy that reads
+ *              exactly like a crash loop. Unverified here either way: k3d is
+ *              refused at `ha`, so this path has never run in `just e2e`.
  *   readiness  checks Postgres and gates traffic. A pod that cannot serve is
  *              pulled from the Service without being killed, so recovery needs
  *              no restart. Timeout is generous because answering 503 with a

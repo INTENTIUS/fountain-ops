@@ -25,10 +25,7 @@ import {
   Checkout,
   SetupNode,
 } from "@intentius/chant-lexicon-github";
-import { CHECKOUT_SHA, SETUP_NODE_SHA, NODE_VERSION, installJust } from "../workflows/shared";
-
-/** Pinned to the version #1394 pins for the k3d lexicon. One number, one place. */
-const K3D_VERSION = "v5.9.0";
+import { CHECKOUT_SHA, SETUP_NODE_SHA, NODE_VERSION, K3D_VERSION, installJust } from "../workflows/shared";
 
 /**
  * Actions by commit SHA, not by tag.

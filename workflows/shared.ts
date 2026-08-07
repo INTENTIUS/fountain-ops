@@ -29,6 +29,14 @@ export const NODE_VERSION = "24";
 export const JUST_VERSION = "1.36.0";
 
 /**
+ * One number, three readers: both k3d-using workflows install this exact
+ * release, the k3d lexicon types its schema, and `just doctor` shows it next
+ * to whatever is installed locally (#63) — which only works while this is the
+ * single place the pin lives.
+ */
+export const K3D_VERSION = "v5.9.0";
+
+/**
  * `just` is the documented interface, so CI drives the same targets a human
  * does. A pinned release binary rather than `curl | bash`: the install scripts
  * are convenient and resolve to whatever upstream published this morning,

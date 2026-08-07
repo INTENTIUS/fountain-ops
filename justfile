@@ -170,9 +170,13 @@ cluster-up:
     if k3d cluster list "{{cluster}}" >/dev/null 2>&1; then
       echo "cluster {{cluster}} already exists"
     else
-      # No loadbalancer: this tier has no ingress, and the port-forward is how
-      # you reach it. One server node is enough to run a Deployment.
-      k3d cluster create "{{cluster}}" --servers 1 --agents 0 --no-lb --wait
+      # The cluster's shape lives in cluster/local.ts, not in flags here —
+      # chant emits the SimpleConfig and k3d consumes it verbatim. The
+      # declaration writes the kubeconfig entry but never switches to it;
+      # the explicit use-context below is the one deliberate switch, which
+      # is the whole point of the guard above it.
+      npx chant build cluster -o dist/k3d-local.yaml --format yaml >/dev/null
+      k3d cluster create --config dist/k3d-local.yaml --wait
     fi
     kubectl config use-context "k3d-{{cluster}}" >/dev/null
 
@@ -593,8 +597,10 @@ e2e:
 #
 # light applies first and ha applies over it, so the in-place light→ha upgrade
 # is exercised as a side effect rather than assumed.
+# The stand-in's name and host port live in cluster/stand-in.ts; the recipe
+# reads both from the emitted config rather than restating them here, so the
+# declaration cannot drift from the curls that depend on it.
 k8s_cluster := "fountain-k8s-stand-in"
-k8s_port    := "8091"
 k8s_host    := "fountain.k8s.test"
 
 [doc("Stand up a multi-node stand-in cluster, prove target=kubernetes light and ha serve, tear down.")]
@@ -607,9 +613,18 @@ e2e-k8s:
     kc() { kubectl --context "$ctx" "$@"; }
 
     step "a fresh cluster that is not ours"
+    # The cluster's shape is a declaration, same as the local one. The host
+    # port the loadbalancer publishes is read from the emitted config so the
+    # Ingress curls below and the declaration cannot disagree.
+    npx chant build cluster -o dist/k3d-local.yaml --format yaml >/dev/null
+    # Secondary configs are keyed by export name; find the stand-in by the
+    # cluster name it declares, which is the thing this recipe actually needs.
+    cfg="$(grep -l "name: {{k8s_cluster}}" dist/k3d-local.yaml dist/*.k3d.yaml 2>/dev/null | head -1)"
+    [ -n "$cfg" ] || fail "no emitted config declares cluster {{k8s_cluster}} — is cluster/stand-in.ts still declared?"
+    hostport="$(sed -n "s/.*port: ['\"]\{0,1\}\([0-9][0-9]*\):80.*/\1/p" "$cfg" | head -1)"
+    [ -n "$hostport" ] || fail "no host port for the loadbalancer in $cfg"
     if ! k3d cluster list "{{k8s_cluster}}" >/dev/null 2>&1; then
-      k3d cluster create "{{k8s_cluster}}" --servers 1 --agents 2 \
-        -p "{{k8s_port}}:80@loadbalancer" --wait >/dev/null
+      k3d cluster create --config "$cfg" --wait >/dev/null
     fi
     for i in $(seq 1 60); do
       kc get --raw /readyz >/dev/null 2>&1 && break
@@ -703,7 +718,7 @@ e2e-k8s:
     # only the body decides.
     ok=""
     for i in $(seq 1 30); do
-      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:{{k8s_port}}/health/ready" 2>/dev/null)" \
+      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:$hostport/health/ready" 2>/dev/null)" \
         && printf '%s' "$body" | grep -q '"database":"ok"' && ok=1 && break
       sleep 2
     done
@@ -741,7 +756,7 @@ e2e-k8s:
     [ "$connected" = 1 ] || fail "neither replica logged a libcluster connect — the Erlang cluster did not form"
     ok=""
     for i in $(seq 1 30); do
-      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:{{k8s_port}}/health/ready" 2>/dev/null)" \
+      body="$(curl -fsS -m 10 -H "Host: {{k8s_host}}" "http://localhost:$hostport/health/ready" 2>/dev/null)" \
         && printf '%s' "$body" | grep -q '"database":"ok"' && ok=1 && break
       sleep 2
     done

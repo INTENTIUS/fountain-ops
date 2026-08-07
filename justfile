@@ -118,6 +118,15 @@ doctor:
     # macOS does not ship it, and without this the failure is a bare
     # "jq: command not found" from inside a recipe — after the preflight that
     # exists to prevent exactly that has already passed.
+
+    # The versions CI actually installs, read from the one file that declares
+    # them rather than restated here (#63). Shown next to the local version,
+    # never failed on: a working 5.8.3 against a pinned 5.9.0 is information,
+    # and failing a preflight over a patch difference is how a preflight gets
+    # ignored — the reasoning already applied to sops and age below.
+    pin() { sed -n "s/^export const $1 = \"\(.*\)\";.*/\1/p" workflows/shared.ts; }
+    pin_k3d="$(pin K3D_VERSION)"; pin_node="$(pin NODE_VERSION)"; pin_just="$(pin JUST_VERSION)"
+
     for t in docker k3d kubectl node npm jq; do
       # kubectl takes `version`, not `--version`, and prints nothing for the
       # latter — so ask each tool the way it wants to be asked.
@@ -125,8 +134,13 @@ doctor:
         kubectl) v="$(kubectl version --client -o yaml 2>/dev/null | awk -F': ' '/gitVersion/{print $2; exit}')" ;;
         *)       v="$($t --version 2>/dev/null | head -1)" ;;
       esac
+      case "$t" in
+        k3d)  pinnote="  (CI pins $pin_k3d)" ;;
+        node) pinnote="  (CI pins $pin_node)" ;;
+        *)    pinnote="" ;;
+      esac
       if command -v "$t" >/dev/null 2>&1; then
-        printf "  ✓ %-8s %s\n" "$t" "$(printf '%s' "$v" | cut -c1-48)"
+        printf "  ✓ %-8s %s%s\n" "$t" "$(printf '%s' "$v" | cut -c1-48)" "$pinnote"
       else
         ok=1
         if [ "$pm" = "brew install" ]; then printf "  ✗ %-8s missing — brew install %s\n" "$t" "$t"
@@ -134,6 +148,11 @@ doctor:
         printf "             %s\n" "$(hint "$t")"
       fi
     done
+
+    # just is not presence-checked — you are running it — but its version can
+    # still disagree with the one CI installs, and this is the one place that
+    # would say so while looking the operator in the face.
+    printf "  ✓ %-8s %s  (CI pins %s)\n" "just" "$(just --version 2>/dev/null | head -1 | cut -c1-40)" "$pin_just"
 
     # Installed and not running is a different problem from not installed, and
     # has a different fix. Only ask once the binary is actually there.

@@ -14,10 +14,7 @@
  */
 
 import { Workflow, Job, Step, Checkout, SetupNode } from "@intentius/chant-lexicon-github";
-import { CHECKOUT_SHA, SETUP_NODE_SHA, NODE_VERSION, installJust } from "../workflows/shared";
-
-/** The same pin ci/pipeline.ts uses — and the version the k3d lexicon types. */
-const K3D_VERSION = "v5.9.0";
+import { CHECKOUT_SHA, SETUP_NODE_SHA, NODE_VERSION, K3D_VERSION, installJust } from "../workflows/shared";
 
 export const workflow = new Workflow({
   name: "e2e-k8s",

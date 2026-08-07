@@ -56,9 +56,10 @@ the database, the master key surviving a re-run, the backup restoring and
 matching live, the account path end to end, and every seam against a real API
 server. The `target=kubernetes` rows have their own loop: `just e2e-k8s`
 stands up a separate three-node stand-in, treats it as foreign, and re-checks
-light and ha through a real Ingress — runnable on a laptop, not yet in CI. The
-rows neither loop covers are the ones needing operators or a cluster this repo
-did not create, and those rows say so.
+light and ha through a real Ingress — on every merge to main, on demand from
+the Actions tab, and on any laptop. The rows neither loop covers are the ones
+needing operators or a cluster this repo did not create, and those rows say
+so.
 
 The conversation gate is the one row with two legitimate outcomes, so `just
 e2e` asserts that the outcome matches the path taken rather than asserting a

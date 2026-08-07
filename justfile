@@ -331,12 +331,14 @@ test:
 
 # Render this repo's own workflows from their declarations.
 #
-# Two, because `chant build <dir>` collects a directory into one output file:
-# ci/ renders ci.yml, pages/ renders pages.yml.
-[doc("Render both GitHub workflows from their TypeScript declarations.")]
+# One directory per workflow, because `chant build <dir>` collects a
+# directory into one output file: ci/ renders ci.yml, pages/ renders
+# pages.yml, e2e-k8s/ renders e2e-k8s.yml.
+[doc("Render the GitHub workflows from their TypeScript declarations.")]
 ci:
     npx chant build ci -o .github/workflows/ci.yml --format yaml
     npx chant build pages -o .github/workflows/pages.yml --format yaml
+    npx chant build e2e-k8s -o .github/workflows/e2e-k8s.yml --format yaml
 
 # Fail if either committed workflow has drifted from its declaration.
 [doc("Fail if either committed workflow has drifted from its declaration.")]
@@ -350,7 +352,7 @@ ci-check:
     out="$(mktemp -t fountain-ci-XXXX.yml)"
     trap 'rm -f "$out"' EXIT
     rc=0
-    for pair in "ci:.github/workflows/ci.yml" "pages:.github/workflows/pages.yml"; do
+    for pair in "ci:.github/workflows/ci.yml" "pages:.github/workflows/pages.yml" "e2e-k8s:.github/workflows/e2e-k8s.yml"; do
       src="${pair%%:*}"; committed="${pair#*:}"
       npx chant build "$src" -o "$out" --format yaml >/dev/null
       if diff -u "$committed" "$out"; then

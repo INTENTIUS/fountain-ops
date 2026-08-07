@@ -37,7 +37,8 @@ stops, is [Status](/fountain-ops/status/)'s job — the short version is that
 `light` and `ha` both apply and serve on a multi-node stand-in
 (`just e2e-k8s` re-checks that), no managed cluster has ever been used
 ([#23](https://github.com/INTENTIUS/fountain-ops/issues/23)), and the steps
-below call out the four things that have never run anywhere as you reach
+below call out the things that have never run anywhere — a cert-manager
+issuance, an Infisical reconcile, a real `SPRITES_TOKEN` — as you reach
 them.
 
 ## The foreign-cluster guard
@@ -221,10 +222,13 @@ way the drill exists to fix.
 
 `barman-pitr` needs `postgres=cnpg` — WAL archiving is a property of the CNPG
 cluster, and there is nothing to archive from a Postgres chant does not manage.
-It applies and the plugin runs, and **no backup has been taken or restored
-through it**. Its schedule is six fields leading with seconds, not five;
-`pitrSchedule` is validated for that because the cluster accepts either and the
-wrong one means 24 base backups a day with no error anywhere.
+It has been taken and restored once, against the emulated store on k3d —
+[Backups](/fountain-ops/reference/backups/#barman-pitr--taken-and-restored-on-the-emulated-store)
+has what that run proved, including the credentials Secret that is yours to
+create. **No real S3 bucket has ever held the archive.** Its schedule is six
+fields leading with seconds, not five; `pitrSchedule` is validated for that
+because the cluster accepts either and the wrong one means 24 base backups a
+day with no error anywhere.
 
 ## Build, validate, apply
 

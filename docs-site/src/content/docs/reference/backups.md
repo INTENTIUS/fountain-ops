@@ -4,9 +4,10 @@ description: A backup nobody has restored is a hypothesis.
 ---
 
 The `backups` seam has three modes: `omit`, `pg-dump` and `barman-pitr`.
-`pg-dump` is the k3d default and the one that has been taken and restored.
-`barman-pitr` applies and its plugin runs, but nothing has been backed up
-through it yet — see [below](#barman-pitr-applies-nothing-has-run-through-it).
+`pg-dump` is the k3d default; both real modes have now been taken and
+restored — `pg-dump` on every `just e2e`, `barman-pitr` once, by hand, against
+the emulated store — see
+[below](#barman-pitr--taken-and-restored-on-the-emulated-store).
 
 ## The CronJob
 
@@ -111,14 +112,29 @@ the data, and on a real deployment losing the cluster loses the key —
 [Secrets](/fountain-ops/reference/secrets/) has the full warning and how to
 get a copy out.
 
-## `barman-pitr` applies, nothing has run through it
+## `barman-pitr` — taken and restored, on the emulated store
 
 `backups=barman-pitr` declares a CNPG `ObjectStore` and a `ScheduledBackup`
 against the barman-cloud plugin, and requires `postgres=cnpg` — a WAL archive
 with nothing archiving into it is refused at build time. After `just
-operators` the manifests apply and the plugin is running, but **no backup has
-been taken or restored through it**. [Status](/fountain-ops/status/) is
-authoritative on that.
+operators` it has been exercised end to end on k3d: `ContinuousArchiving`
+goes `True` against the emulated S3, an on-demand `Backup` through the plugin
+completes with a base backup and the WAL stream in the bucket, and a recovery
+`Cluster` bootstrapped from that ObjectStore comes up with every table the
+live database has. [Status](/fountain-ops/status/) is authoritative on what
+that run did and did not prove — the nightly `ScheduledBackup` has never
+fired on its own, and no real S3 bucket has ever held the archive.
+
+Two things the exercise surfaced, both yours to handle on a real cluster:
+
+- Nothing creates the credentials Secret (`backupSecretName`, default
+  `fountain-backup-s3-credentials`). The `ObjectStore` reads
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from it by name;
+  `kubectl create secret generic` is enough.
+- The emulated store loses its buckets when floci restarts — WAL archiving
+  fails with barman's exit status 4 until `just storage-init` recreates the
+  bucket. The same failure on a real cluster means the bucket is gone or the
+  credentials cannot see it.
 
 Its schedule is `pitrSchedule`, deliberately a separate parameter from
 `backupSchedule`: CNPG cron is six fields, leading with seconds, and

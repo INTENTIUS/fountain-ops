@@ -4,13 +4,13 @@
 # every search result. The hero keeps the short name; the page title carries
 # what the project actually is.
 title: Run your own fountain
-description: Deploy fountain yourself. One command on a laptop, a short path to durable, and the same build aimed at a real cluster.
+description: Hand the prompt to your agent, or follow the quickstart yourself. Two tiers, one command each.
 template: splash
 hero:
   title: fountain-ops
-  tagline: Deploy fountain yourself. One command on a laptop, a short path from there to durable, and the same build aimed at a real cluster.
+  tagline: Deploy fountain yourself — or hand the prompt below to your agent and let it drive.
   actions:
-    - text: Stand it up
+    - text: Quickstart
       link: /fountain-ops/getting-started/stand-it-up/
       icon: right-arrow
     - text: View on GitHub
@@ -19,60 +19,33 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+## Hand this to your agent
 
-## Five minutes, most of it pulling images
+```text
+Deploy fountain for me.
 
-```bash
-just doctor        # what this needs, and how to install what is missing
-npm install
-just up            # cluster, secret, build, apply, wait, prove it serves
+Clone https://github.com/INTENTIUS/fountain-ops and work from it.
+`just doctor` says what this machine is missing and how to install it.
+Then:  npm install && just up
+When it reports green, run `just forward` and tell me to open
+http://localhost:4000/auth/register — my first account self-verifies and
+becomes the admin, so have me register before anything else.
+
+If I asked for durable, read
+https://intentius.io/fountain-ops/getting-started/make-it-durable/ first —
+it is one `just up` with four parameters, after `just operators`.
+If I asked for a real cluster, read
+https://intentius.io/fountain-ops/getting-started/real-cluster/ and walk me
+through its decisions instead of guessing them.
+
+When a step fails, re-run that step — `just --list` names them all — not
+the whole loop. https://intentius.io/fountain-ops/status/ is authoritative
+about what is verified to work; trust it over any other page.
 ```
 
-Then register at `localhost:4000/auth/register` and sign in — your account
-self-verifies, and the instance's first account is
-[the admin](/fountain-ops/getting-started/stand-it-up/#first-login).
+## Or drive it yourself
 
-<CardGrid stagger>
-  <Card title="On a laptop" icon="laptop">
-    [Stand it up locally](/fountain-ops/getting-started/stand-it-up/): one
-    command, a local cluster, an emulated data plane. Register and you are the
-    admin.
-  </Card>
-  <Card title="Durable" icon="setting">
-    [Make it durable](/fountain-ops/getting-started/make-it-durable/): two app
-    replicas that stay one instance, over a replicated Postgres — still on the
-    laptop, so you can practice the shape before you need it.
-  </Card>
-  <Card title="On a real cluster" icon="rocket">
-    [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/):
-    the same build, aimed at a cluster this repo did not create. Your database,
-    your ingress class, your Secret.
-  </Card>
-  <Card title="What is verified" icon="approve-check">
-    [Status](/fountain-ops/status/) says which of these paths has actually
-    been run, and prefers **Builds only** to a word that sounds better. It wins
-    any disagreement with the rest of the docs.
-  </Card>
-</CardGrid>
-
-## What you drive it with
-
-`just` targets, and nothing else. The manifests are compiled from TypeScript
-by [chant](https://intentius.io/chant), but every command you need is a `just`
-target — you can deploy, operate and tear this down without learning what
-chant is.
-
-```bash
-just status       # everything in the namespace
-just logs         # the app, following
-just preview kubernetes ha         # see another shape without applying anything
-just down         # remove everything it created, and nothing it did not
-```
-
-## Where to go next
-
-- [What you are deploying](/fountain-ops/getting-started/overview/) — the pieces, the four shapes, and the four words the docs lean on
-- [Make it durable](/fountain-ops/getting-started/make-it-durable/) — `tier=ha`, on the laptop first
-- [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/) — the decisions in order
-- [Status](/fountain-ops/status/) — what is verified today; read it before believing anything else
+- [Quickstart](/fountain-ops/getting-started/stand-it-up/) — `tier=light` on a laptop: one command, register, you are the admin
+- [Make it durable](/fountain-ops/getting-started/make-it-durable/) — `tier=ha`: two clustered replicas over a replicated Postgres, still on the laptop
+- [Stand it up on a real cluster](/fountain-ops/getting-started/real-cluster/) — either tier, on a cluster you already have
+- [Status](/fountain-ops/status/) — what is verified today; it wins any disagreement with the rest of the docs

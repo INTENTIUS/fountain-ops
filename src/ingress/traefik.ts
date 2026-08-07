@@ -1,4 +1,5 @@
 import { IngressRoute, Middleware } from "@intentius/chant-lexicon-k8s";
+import { service } from "../app/service";
 import { namespace, hostname, httpsPublicUrl, seams, labels, traefikMiddlewareNamespace } from "../params";
 
 /**
@@ -20,8 +21,9 @@ import { namespace, hostname, httpsPublicUrl, seams, labels, traefikMiddlewareNa
 /** The matcher. Backticks are Traefik's grammar, not YAML quoting. */
 const match = `Host(\`${hostname}\`)`;
 
-/** Port 80 on the Service — never 9568, which is the metrics listener. */
-const services = [{ name: "fountain", port: 80 }];
+/** Port 80 on the Service — never 9568, which is the metrics listener. The
+ * reference, not the string, so the route→Service edge is in the graph (#84). */
+const services = [{ name: service.name, port: 80 }];
 
 /**
  * The https route.

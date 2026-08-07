@@ -85,9 +85,12 @@ export const pgCluster =
                   {
                     name: "barman-cloud.cloudnative-pg.io",
                     isWALArchiver: true,
-                    // Names the ObjectStore above. Nothing upstream checks this
-                    // string; a typo archives into nowhere, silently.
-                    parameters: { barmanObjectName: "fountain-backups" },
+                    // References the ObjectStore above rather than restating
+                    // its name — nothing upstream checks the string, so a typo
+                    // archives into nowhere silently; a reference cannot typo,
+                    // and it puts the edge in the graph (#84). Same seam guard
+                    // on both, so the assertion is safe.
+                    parameters: { barmanObjectName: objectStore!.name },
                   },
                 ]
               : undefined,
@@ -126,7 +129,9 @@ export const pgScheduledBackup =
           // trusted.
           schedule: pitrSchedule,
           backupOwnerReference: "self",
-          cluster: { name: "fountain-pg" },
+          // The reference puts the ScheduledBackup→Cluster edge in the
+          // graph (#84); both share the barman-pitr guard.
+          cluster: { name: pgCluster!.name },
           method: "plugin",
           pluginConfiguration: { name: "barman-cloud.cloudnative-pg.io" },
         },

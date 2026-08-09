@@ -1,0 +1,3 @@
+{
+  "tiers": { "envVar": "FOUNTAIN_TIER", "values": ["light", "ha"] }
+}

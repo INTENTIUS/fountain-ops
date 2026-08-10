@@ -12,11 +12,11 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@intentius/chant": "^0.41.0",
-    "@intentius/chant-lexicon-github": "^0.41.0",
-    "@intentius/chant-lexicon-k3d": "^0.41.15",
-    "@intentius/chant-lexicon-k8s": "^0.41.0",
-    "@intentius/chant-lexicon-temporal": "^0.41.0",
+    "@intentius/chant": "^0.44.2",
+    "@intentius/chant-lexicon-github": "^0.44.2",
+    "@intentius/chant-lexicon-k3d": "^0.44.2",
+    "@intentius/chant-lexicon-k8s": "^0.44.2",
+    "@intentius/chant-lexicon-temporal": "^0.44.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.4"
   }

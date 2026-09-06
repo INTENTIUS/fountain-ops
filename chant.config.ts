@@ -1,5 +1,6 @@
 import type { ChantConfig } from "@intentius/chant";
 import type { K8sChantConfig } from "@intentius/chant-lexicon-k8s";
+import { FOUNTAIN_IMAGE } from "./src/lib/fountain-image";
 
 /**
  * Self-hosted fountain, deployed by chant.
@@ -146,7 +147,10 @@ export default {
     // X-Forwarded-Proto or every request looks like http and redirect-loops.
     host: { type: "string", default: "localhost:4000" },
     scheme: { type: "string", enum: ["http", "https"], default: "http" },
-    image: { type: "string", default: "ghcr.io/binarybourbon/fountain:v0.7.0" },
+    // The pin lives in src/lib/fountain-image.ts, which this and src/params.ts
+    // both read. It was spelled out in both files until #119 found them nine
+    // releases behind together.
+    image: { type: "string", default: FOUNTAIN_IMAGE },
 
     // ── the two axes ──────────────────────────────────────────────────────
     // Separate questions, and not a free grid: k3d + ha is refused, because

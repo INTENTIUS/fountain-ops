@@ -8,16 +8,22 @@
  * The `?? default` on each line mirrors the declared default — redundant under
  * a real `chant build`, and a safety net for anything importing this outside
  * the build pipeline (a unit test, a script) where `params` is still empty.
+ *
+ * Mirroring is fine for a value nothing outside this repo moves. It was not
+ * fine for the fountain image: two literals, and the declared one nine
+ * releases stale before anyone noticed (#119). That one is imported from
+ * lib/fountain-image.ts instead, so the two cannot say different things.
  */
 
 import { params } from "@intentius/chant/params";
 import { resolveTier, sizeShape, defaultSize, type Tier, type Size } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
+import { FOUNTAIN_IMAGE } from "./lib/fountain-image";
 import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
-export const image = (params.image as string | undefined) ?? "ghcr.io/binarybourbon/fountain:v0.7.0";
+export const image = (params.image as string | undefined) ?? FOUNTAIN_IMAGE;
 
 /**
  * The externally-visible authority, port included where there is one.

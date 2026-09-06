@@ -29,16 +29,20 @@ anything written in the present tense anywhere else, this file included.
   once: both replicas race to create the migrations table and the loser's
   retry wins ([#90](https://github.com/INTENTIUS/fountain-ops/issues/90)).
   At `light`, any restart is a real finding.
-- How a conversation turn *ends* against the emulator varies by fountain
-  release and is being actively worked on upstream. `just verify-conversation`
-  reports which ending it observed; do not chase the ending, and do not add
-  assertions about it.
+- A conversation turn against the emulator fails at the ACP handshake, every
+  time: fountain speaks ACP to its runtimes from v0.9.0 and spritzer 0.5.0
+  answers `initialize is not supported`. `just verify-conversation` asserts
+  everything up to that and names the refusal. Do not chase the ending — it is
+  spritzer's to give back — and do not add assertions about it.
 
 ## Things that will waste your time if edited directly
 
-- `.github/workflows/*.yml` are rendered from `ci/`, `pages/` and
-  `e2e-k8s/` TypeScript declarations — edit those and run `just ci`;
+- `.github/workflows/*.yml` are rendered from `ci/`, `pages/`, `e2e-k8s/`
+  and `image-pin/` TypeScript declarations — edit those and run `just ci`;
   `just ci-check` fails CI on a hand edit.
+- The fountain image pin is `FOUNTAIN_VERSION` in `src/lib/fountain-image.ts`
+  and nowhere else. `image-pin` opens a PR when upstream moves; taking that PR
+  means reading the releases and running `just e2e`, not merging it.
 - `dist/` is build output. The docs pages under `docs-site/` are source.
 - The roadmap is [the issues](https://github.com/INTENTIUS/fountain-ops/issues);
   there is no roadmap file to update.

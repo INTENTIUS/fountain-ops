@@ -352,15 +352,16 @@ test:
 #
 # One directory per workflow, because `chant build <dir>` collects a
 # directory into one output file: ci/ renders ci.yml, pages/ renders
-# pages.yml, e2e-k8s/ renders e2e-k8s.yml.
+# pages.yml, e2e-k8s/ renders e2e-k8s.yml, image-pin/ renders image-pin.yml.
 [doc("Render the GitHub workflows from their TypeScript declarations.")]
 ci:
     npx chant build ci -o .github/workflows/ci.yml --format yaml
     npx chant build pages -o .github/workflows/pages.yml --format yaml
     npx chant build e2e-k8s -o .github/workflows/e2e-k8s.yml --format yaml
+    npx chant build image-pin -o .github/workflows/image-pin.yml --format yaml
 
-# Fail if either committed workflow has drifted from its declaration.
-[doc("Fail if either committed workflow has drifted from its declaration.")]
+# Fail if any committed workflow has drifted from its declaration.
+[doc("Fail if any committed workflow has drifted from its declaration.")]
 ci-check:
     #!/usr/bin/env bash
     # GitHub reads YAML from the default branch, so the rendered file has to be
@@ -371,7 +372,7 @@ ci-check:
     out="$(mktemp -t fountain-ci-XXXX.yml)"
     trap 'rm -f "$out"' EXIT
     rc=0
-    for pair in "ci:.github/workflows/ci.yml" "pages:.github/workflows/pages.yml" "e2e-k8s:.github/workflows/e2e-k8s.yml"; do
+    for pair in "ci:.github/workflows/ci.yml" "pages:.github/workflows/pages.yml" "e2e-k8s:.github/workflows/e2e-k8s.yml" "image-pin:.github/workflows/image-pin.yml"; do
       src="${pair%%:*}"; committed="${pair#*:}"
       npx chant build "$src" -o "$out" --format yaml >/dev/null
       if diff -u "$committed" "$out"; then
@@ -590,6 +591,13 @@ e2e:
     #
     # So `turn_orphaned` and `:command_exited` are both regressions now, not
     # outcomes, and each names the pin that would have to have moved.
+    #
+    # The turn stopped completing again at fountain v0.16.0, and this time not
+    # because of a race: fountain speaks ACP to its runtimes from v0.9.0 and
+    # spritzer 0.5.0 cannot answer `initialize`. verify-conversation recognises
+    # that one refusal on the emulated plane and still asserts everything up to
+    # it — the sandbox, the dispatch, the stream. The ending is upstream's to
+    # give back; the two regressions above are still ours to catch.
     step "the conversation gate"
     export FOUNTAIN_PASSWORD="$pass"
     out="$(just verify-conversation "$email" 2>&1 || true)"
@@ -604,8 +612,12 @@ e2e:
       fail "the runtime exited before the prompt was written — spritzer#20 regressed, or spritzerImage rolled back below 0.5.0"
     fi
     printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
-      || { echo "$out" | tail -20; fail "the turn did not complete"; }
-    echo "  ✓ the turn completed, prompt echoed back — the echo, not a model"
+      || { echo "$out" | tail -20; fail "the turn never reached the sandbox"; }
+    if printf '%s' "$out" | grep -q "failed the ACP handshake"; then
+      echo "  ✓ the plumbing held, and the turn stopped where the emulator does"
+    else
+      echo "  ✓ the turn completed, prompt echoed back — the echo, not a model"
+    fi
 
     # Every seam that needs a CRD, against a real API server rather than
     # against our own expectations. No controllers, so nothing reconciles.
@@ -1124,20 +1136,40 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     fail() { echo "  ✗ $1" >&2; echo "$ev" | head -30 >&2; exit 1; }
     printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
     printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
-    # One assertion for both planes again: the turn exits 0 and streams output.
+    printf '%s' "$ev" | grep -q 'event: output'       || fail "the turn produced no output at all"
+
+    # How far the turn gets depends on what is on the other end of the exec
+    # session, and at these pins the emulator cannot get to the end.
     #
     # This recipe spent three fountain releases refusing to pin the emulator's
     # ending (exit 0 on ≤ v0.5.x, :command_exited on v0.6.0, exit 0 again on
-    # v0.6.1) because the ending was a race. spritzer 0.5.0 ends the race —
-    # #20 holds an unrecognised command's exec session open until stdin EOF, so
-    # the prompt lands on a live process instead of one that already exited.
-    # 34 of 34 conversations completed at these pins. A shape that is now
-    # deterministic is a shape worth asserting.
-    printf '%s' "$ev" | grep -q '"exit_code\\":0'   || fail "the turn did not exit 0"
-    printf '%s' "$ev" | grep -q 'event: output'     || fail "the turn produced no output at all"
-    echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
-    if [ "$plane" = "spritzer" ]; then
-      echo "    (the echo, not a model reply)"
+    # v0.6.1) because the ending was a race. spritzer 0.5.0 ended that race —
+    # #20 holds an unrecognised command's exec session open until stdin EOF —
+    # and 34 of 34 conversations completed at fountain v0.6.1.
+    #
+    # What ended it instead was the protocol changing underneath both of them.
+    # fountain speaks the Agent Client Protocol to its runtimes from v0.9.0
+    # (fountain#671; #674 deleted the legacy spawn path, and an agent reports
+    # `acp: true` whatever you post to /api/agents). A turn now opens
+    # `claude-agent-acp` and sends `initialize`; spritzer 0.5.0 echoes command
+    # lines and knows no JSON-RPC, so it answers -32601 and the turn stage ends
+    # `failed`. Deterministically, on every run, for a reason that is upstream
+    # of everything this repo controls: spritzer has to learn `initialize`.
+    #
+    # So that refusal is a recognised ending on the emulated plane rather than
+    # a red build — named exactly, never tolerated generically. A real data
+    # plane still has to exit 0, and so does the emulator the day it answers.
+    if [ "$plane" = "spritzer" ] && printf '%s' "$ev" | grep -qF ':acp_error, :initialize'; then
+      echo "  ✓ plumbing: sandbox provisioned, turn dispatched, output streamed"
+      echo "    the turn then failed the ACP handshake, which is as far as"
+      echo "    spritzer 0.5.0 goes against a fountain that speaks ACP"
+      echo "    (fountain#671, #674). Not a claim about a reply, either way."
+    else
+      printf '%s' "$ev" | grep -q '"exit_code\\":0' || fail "the turn did not exit 0"
+      echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
+      if [ "$plane" = "spritzer" ]; then
+        echo "    (the echo, not a model reply)"
+      fi
     fi
 
     if [ "{{MODE}}" = "strict" ]; then

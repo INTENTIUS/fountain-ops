@@ -11,7 +11,10 @@ import { spritzerBaseUrl } from "../data/spritzer";
  *              migrates on every start, under an advisory lock, before the
  *              endpoint listens. 150s of headroom.
  *
- *              The advisory lock is only true from v0.7.0 (fountain#610).
+ *              The advisory lock is only true from v0.7.0 (fountain#610),
+ *              which every supported pin is now well past — the paragraph
+ *              below is about older ones, and about why a first `ha` deploy
+ *              on them looks like a crash loop.
  *              Before it, the lock was a row lock on `schema_migrations`,
  *              which cannot serialize the creation of that table itself — so
  *              at `ha` (replicas: 2) against a *fresh* database both replicas

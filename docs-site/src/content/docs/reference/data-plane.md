@@ -24,28 +24,47 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## Turns complete
+## Turns stop at the handshake
 
-At `fountain v0.7.0` and `spritzer 0.5.0`, the turn gate holds. The "every
-time" evidence below is v0.6.1's — 34 of 34, batched — and v0.7.0 has been
-through the single conversation `just e2e` runs, not a rerun of that batch;
-nothing in v0.7.0 touches this path. fountain opens
-an exec session for the runtime command and writes the prompt into it as stdin;
-spritzer holds the session open, echoes the prompt back on stdout, and exits 0
-on EOF:
+At `fountain v0.16.0` and `spritzer 0.5.0` a turn is dispatched into the
+sandbox and then fails, for a reason neither end of this repo can fix.
+
+fountain speaks the [Agent Client Protocol](https://agentclientprotocol.com/)
+to its runtimes from `v0.9.0`
+([fountain#671](https://github.com/BinaryBourbon/fountain/pull/671)), and
+[#674](https://github.com/BinaryBourbon/fountain/pull/674) deleted the spawn
+path it replaced — an agent comes back `acp: true` however you create it. So
+the turn no longer writes a prompt into a command's stdin. It runs
+`claude-agent-acp` and opens a JSON-RPC session:
+
+```
+event: output  env FOUNTAIN_CONVERSATION_ID=… claude-agent-acp
+event: stage   turn  failed  {"reason":"acp: {:acp_error, :initialize,
+                              %{\"code\" => -32601,
+                                \"message\" => \"initialize is not supported\"}}"}
+```
+
+spritzer's exec is a scripted interpreter that echoes command lines. It has
+never spoken JSON-RPC and `0.5.0`, its newest release, does not either, so
+`initialize` is refused and the turn ends there. This is deterministic rather
+than a race, and it is upstream of everything here: no parameter, pin or
+manifest in this repo changes it. spritzer has to answer `initialize`.
+
+What still holds, and is still asserted on every `just e2e`: the sandbox is
+provisioned and populated, the turn is dispatched into it, and the runtime's
+output streams back out. That is the substrate working. It is one round trip
+short of a conversation.
+
+The evidence for the old ending stands where it was measured and does not
+carry forward — 34 of 34 conversations completed at `fountain v0.6.1` +
+`spritzer 0.5.0`, over the spawn path below, which no longer exists. It reads
+like history now because it is:
 
 ```
 event: output  claude --dangerously-skip-permissions --print --verbose --output-format stream-json …
 event: output  Reply with the single word: fountain
 event: stage   turn  done  {"exit_code":0}
 ```
-
-That second line is the prompt making the round trip. It is the difference
-between provisioning a sandbox and holding a conversation — and it is still
-the **echo**, never a model. See [what it will never prove](#what-it-will-never-prove).
-
-Measured: 34 of 34 conversations, including batches fired back to back, which
-is the pacing that used to fail most.
 
 :::note[This was a race for a long time, and was described wrongly three times]
 Until recently a turn against the emulator usually did not finish, and three
@@ -86,7 +105,8 @@ that was already fixed on main. That is its own lesson:
 :::
 
 So the emulated data plane proves the substrate can provision a sandbox,
-address it, and carry a prompt into it and a reply back out.
+address it, and dispatch a turn into it. Carrying a prompt in and a reply back
+out is the part that stopped working when the protocol changed.
 
 ## What it will never prove
 

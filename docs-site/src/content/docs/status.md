@@ -14,7 +14,7 @@ about.
 | | |
 |---|---|
 | `target=k3d`, `tier=light` | Stood up, serves `/health/ready`, migrations ran |
-| Bundled Postgres | 41 tables, app connects |
+| Bundled Postgres | 49 tables at `fountain v0.21.0`, app connects |
 | Registering and signing in | Registered at `/auth/register`, self-verified at registration (fountain ADR 0011; `just verify-email` remains the escape hatch), reached `/onboarding/step_1` and `/conversations` |
 | The first admin | The first verified account is promoted in-app (`FIRST_USER_ADMIN=true`, fountain ADR 0011), audit-recorded as `admin.role.granted`. E2e-asserted via `just promote-admin` reporting it already admin; the admin pages themselves have not been driven by anything here |
 | Provisioning a sandbox | Against the emulated data plane: a sprite is created and populated with the fountain skill and a `/home/sprite/.env` written into its filesystem |
@@ -36,7 +36,8 @@ The evidence that used to sit in **Verified** stands where it was measured and
 does not carry: 34 of 34 conversations completed at `fountain v0.6.1` +
 `spritzer 0.5.0`, over a spawn path that no longer exists. Moving the image pin
 to `v0.16.0` is what surfaced this — nine releases of upstream at once, one of
-which changed the protocol.
+which changed the protocol. The pin is now `v0.21.0`, and `just e2e` stops at
+the same handshake there.
 [#67](https://github.com/INTENTIUS/fountain-ops/issues/67) holds the history of
 getting this row wrong, and it is now four times.
 

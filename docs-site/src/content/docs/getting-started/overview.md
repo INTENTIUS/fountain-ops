@@ -3,7 +3,7 @@ title: What you are deploying
 description: The pieces of a fountain deployment, the four shapes it comes in, and the four words the rest of the docs lean on.
 ---
 
-[fountain](https://github.com/BinaryBourbon/fountain) is a server: you run it,
+[fountain](https://github.com/managoat/fountain) is a server: you run it,
 people register accounts on it, and it runs agent conversations in sandboxes.
 This repo deploys it to Kubernetes and proves the deployment works. You drive
 everything with `just` commands.

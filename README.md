@@ -1,6 +1,6 @@
 # fountain-ops
 
-Run your own [fountain](https://github.com/BinaryBourbon/fountain). One command stands it up on a laptop; the same build, with a handful of parameters, is how it goes everywhere else. You drive all of it with `just`.
+Run your own [fountain](https://github.com/managoat/fountain). One command stands it up on a laptop; the same build, with a handful of parameters, is how it goes everywhere else. You drive all of it with `just`.
 
 **Docs:** [Stand it up](https://intentius.io/fountain-ops/getting-started/stand-it-up/) ·
 [Make it durable](https://intentius.io/fountain-ops/getting-started/make-it-durable/) ·

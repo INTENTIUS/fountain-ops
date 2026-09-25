@@ -26,7 +26,7 @@ sprite `running` with both files present.
 
 ## Turns stop at the handshake
 
-At `fountain v0.16.0` and `spritzer 0.5.0` a turn is dispatched into the
+At `fountain v0.16.0` through `v0.21.0` (the pin) and `spritzer 0.5.0`, a turn is dispatched into the
 sandbox and then fails, for a reason neither end of this repo can fix.
 
 fountain speaks the [Agent Client Protocol](https://agentclientprotocol.com/)

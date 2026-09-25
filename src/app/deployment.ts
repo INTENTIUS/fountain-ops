@@ -11,7 +11,10 @@ import { spritzerBaseUrl } from "../data/spritzer";
  *              migrates on every start, under an advisory lock, before the
  *              endpoint listens. 150s of headroom.
  *
- *              The advisory lock is only true from v0.7.0 (fountain#610).
+ *              The advisory lock is only true from v0.7.0 (fountain#610),
+ *              which every supported pin is now well past — the paragraph
+ *              below is about older ones, and about why a first `ha` deploy
+ *              on them looks like a crash loop.
  *              Before it, the lock was a row lock on `schema_migrations`,
  *              which cannot serialize the creation of that table itself — so
  *              at `ha` (replicas: 2) against a *fresh* database both replicas
@@ -186,7 +189,10 @@ export const deployment = new Deployment({
               // instance unless Stripe is configured. Upstream defaults it off
               // since v0.4.0; stated anyway, because the gate being off is a
               // property of this deployment, not an inherited default.
-              { name: "BILLING_ENABLED", value: "false" },
+              // CREDITS_ENABLED since fountain#1144. BILLING_ENABLED, the name
+              // this used to set, was read as an alias with a warning through
+              // v0.16.x and is ignored from v0.17.0.
+              { name: "CREDITS_ENABLED", value: "false" },
               // An instance on the public internet with registration open will
               // be found. Close it once you have your account.
               { name: "REGISTRATION_ENABLED", value: registrationEnabled },

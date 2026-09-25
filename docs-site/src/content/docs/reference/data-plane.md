@@ -54,10 +54,12 @@ seen:
   (`Could not select model claude-sonnet-4-6 … check account access`) because
   the instance has no inference credential. With one, that is a real turn.
 
-One thing does not work yet: an Environment with `networking_type: limited`
-fails at the network stage, because fountain rejects spritzer's answer to the
-network policy call (`{:network_policy, {:invalid, {:http, 200, %{"rules" =>
-[…]}}}}`), with an empty allowlist or one host. `unrestricted` provisions.
+An Environment with `networking_type: limited` provisions from spritzer
+`0.6.1`. spritzer `0.6.0` answered the network policy call with `200` and the
+rules, where Sprites answers `204`, and fountain refused it at the network stage
+([spritzer#26](https://github.com/INTENTIUS/spritzer/issues/26)). spritzer
+stores the policy and returns it, but does not enforce it: a limited sandbox on
+the emulator can still reach any host.
 
 Checkpoints answer `501` in container mode
 ([spritzer#23](https://github.com/INTENTIUS/spritzer/issues/23)).
@@ -215,12 +217,15 @@ in the loop at all. Container mode runs the real runtime, so `strict` is
 allowed there and needs an inference credential to pass.
 
 **`fixture`** needs spritzer in container mode and the account named by
-`acpFixtureUserId`. It makes a persistent agent on `fountain-fixture`, sends
+`acpFixtureUserId`. It makes a `networking_type: limited` Environment with an
+empty allowlist and a persistent agent on `fountain-fixture` in it, sends
 the fixture's `write` scenario with a fresh nonce, and asserts the turn ended
-`end_turn`, the fixture reported the write, and a `sprite-*` pod holds the file:
+`end_turn`, the network stage finished `done`, the fixture reported the write,
+and a `sprite-*` pod holds the file:
 
 ```
   data plane: spritzer (container)
+  ✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)
   ✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-1f627f19-61bdcacd,
     and its artifact reads back from the pod. ACP end to end, no model.
 ```

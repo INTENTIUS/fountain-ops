@@ -75,6 +75,7 @@ credential. The gate enables the fixture for the account it just registered
 (`--param acpFixtureUserId`), and asserts:
 
 ```
+✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)
 ✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-…,
   and its artifact reads back from the pod. ACP end to end, no model.
 ```

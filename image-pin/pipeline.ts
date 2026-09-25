@@ -41,7 +41,7 @@ const PIN_FILE = "src/lib/fountain-image.ts";
 const PIN_CONST = "FOUNTAIN_VERSION";
 
 /** Upstream. The image is published from this repo's releases. */
-const UPSTREAM = "BinaryBourbon/fountain";
+const UPSTREAM = "managoat/fountain";
 
 export const workflow = new Workflow({
   name: "image-pin",

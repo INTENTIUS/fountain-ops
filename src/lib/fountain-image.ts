@@ -21,6 +21,14 @@
  */
 
 /** The upstream release this repo deploys by default. */
-export const FOUNTAIN_VERSION = "v0.16.0";
+export const FOUNTAIN_VERSION = "v0.21.0";
 
-export const FOUNTAIN_IMAGE = `ghcr.io/binarybourbon/fountain:${FOUNTAIN_VERSION}`;
+/**
+ * The registry path moved with the repository. BinaryBourbon/fountain became
+ * managoat/fountain, and releases after v0.16.0 publish only to
+ * ghcr.io/managoat/fountain: ghcr.io/binarybourbon/fountain has no v0.17.0 or
+ * later, so a version bump that kept the old path pinned an image nothing can
+ * pull. The bare tag is the bundled distribution; `-core` tags drop the
+ * extensions (Buzz, the connection providers) and are not what this deploys.
+ */
+export const FOUNTAIN_IMAGE = `ghcr.io/managoat/fountain:${FOUNTAIN_VERSION}`;

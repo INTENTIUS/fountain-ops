@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
           
-          latest="$(gh api repos/BinaryBourbon/fountain/releases/latest --jq .tag_name)"
+          latest="$(gh api repos/managoat/fountain/releases/latest --jq .tag_name)"
           echo "pinned $pinned, latest $latest"
           
           if [ "$pinned" = "$latest" ]; then
@@ -82,7 +82,7 @@ jobs:
           
           Before merging:
           
-          - Read https://github.com/BinaryBourbon/fountain/releases — what changed between
+          - Read https://github.com/managoat/fountain/releases — what changed between
             $pinned and $latest that this repo sets, asserts or documents.
           - \`just e2e\` against the new pin, from nothing. This is a deploy-path
             change and that is the bar for one.

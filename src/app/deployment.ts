@@ -189,7 +189,10 @@ export const deployment = new Deployment({
               // instance unless Stripe is configured. Upstream defaults it off
               // since v0.4.0; stated anyway, because the gate being off is a
               // property of this deployment, not an inherited default.
-              { name: "BILLING_ENABLED", value: "false" },
+              // CREDITS_ENABLED since fountain#1144. BILLING_ENABLED, the name
+              // this used to set, was read as an alias with a warning through
+              // v0.16.x and is ignored from v0.17.0.
+              { name: "CREDITS_ENABLED", value: "false" },
               // An instance on the public internet with registration open will
               // be found. Close it once you have your account.
               { name: "REGISTRATION_ENABLED", value: registrationEnabled },

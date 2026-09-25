@@ -90,7 +90,10 @@ what has actually run.
 | `backupSecretName` | any string | `fountain-backup-s3-credentials` | The S3 credentials the backup path reads |
 | `backupS3Endpoint` | a URL | floci's in-cluster Service when `storage=floci`, otherwise unset | Unset means the AWS default endpoint — see below |
 | `flociImage` | an image reference | `floci/floci:1.5.34` | Pinned. `storage=floci` |
-| `spritzerImage` | an image reference | `ghcr.io/intentius/spritzer:0.5.0` | Pinned, because the emulator decides what a local conversation does. `dataPlane=spritzer` |
+| `spritzerImage` | an image reference | `ghcr.io/intentius/spritzer:0.6.0` | Pinned, because the emulator decides what a local conversation does. Also passed to spritzer as `SPRITZER_AGENT_IMAGE`, whose binary goes into every sprite. `dataPlane=spritzer` |
+| `spritzerExec` | `container` · `interpreter` | `container` | `container` (spritzer ≥ 0.6.0) makes every sprite a pod in the namespace running real commands, and adds the ServiceAccount, Role and RoleBinding spritzer needs to create, delete and exec into pods there. Sprite pods run as root. `interpreter` is the scripted echo, where turns stop at the ACP handshake |
+| `spritzerSpriteImage` | an image reference | `node:22-bookworm` | What each sprite pod runs in container mode. About 1.1GB on first pull |
+| `acpFixtureUserId` | a user id (UUID) | unset | Enables fountain's deterministic ACP fixture runtime (`fountain-fixture`, fountain v0.21.0) for that one account: a real ACP process in the sandbox, no model, no inference credential. `just register` prints the id. Refused unless `dataPlane=spritzer`, and refused if not a UUID |
 | `spritesBaseUrl` | an `http`/`https` base URL | unset | fountain's `SPRITES_BASE_URL` for `dataPlane=wisp`, which requires it. Refused with any other data plane, and refused with a query, fragment or credentials in it; a trailing slash is dropped. See [The data plane](/fountain-ops/reference/data-plane/#a-wisp-endpoint) |
 | `spritesTokenSecret` | any string | `fountain-sprites-token` | The Secret whose `SPRITES_TOKEN` key is the endpoint's bearer token, for `dataPlane=wisp`. `just sprites-token` creates it, and `apply` refuses to run while it is missing |
 

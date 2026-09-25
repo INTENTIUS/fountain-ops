@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { resolveTier, sizeShape, defaultSize } from "../src/lib/tiers";
-import { resolveSeams, resolveSpritesBaseUrl, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
+import { resolveSeams, resolveSpritesBaseUrl, assertAcpFixtureUserId, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
 import { tierShape } from "../src/lib/tiers";
 import { targetShape } from "../src/lib/targets";
 
@@ -214,6 +214,27 @@ describe("dataPlane=wisp", () => {
     // A token in the URL would land in the pod spec in plain text.
     expect(() => resolveSpritesBaseUrl(wisp, "https://tok@wisp.widgets.wtf")).toThrow(/Secret/);
     expect(() => resolveSpritesBaseUrl(wisp, "https://wisp.widgets.wtf?token=x")).toThrow(/query/);
+  });
+});
+
+describe("acpFixtureUserId", () => {
+  const id = "1f627f19-52d3-4b41-addf-daeb1e877c01";
+
+  test("unset is no fixture, on any data plane", () => {
+    expect(assertAcpFixtureUserId({ ...base, dataPlane: "sprites" }, undefined)).toBeUndefined();
+  });
+
+  test("a user id on the emulated plane enables it", () => {
+    expect(assertAcpFixtureUserId({ ...base, dataPlane: "spritzer" }, id)).toBe(id);
+  });
+
+  test("is refused on any real data plane, because it bypasses inference credentials", () => {
+    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "sprites" }, id)).toThrow(/only accepted with dataPlane="spritzer"/);
+    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id)).toThrow(/bypasses inference credentials/);
+  });
+
+  test("something that is not a UUID is refused, since fountain would ignore it", () => {
+    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "spritzer" }, "studio@example.com")).toThrow(/not a user id/);
   });
 });
 

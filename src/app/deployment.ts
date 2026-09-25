@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, cnpgImage, labels, spritesBaseUrl, spritesTokenSecret } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, cnpgImage, labels, spritesBaseUrl, spritesTokenSecret, acpFixtureUserId, spritzerExec } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -70,6 +70,17 @@ const dataPlaneEnv = spritzerBaseUrl
       ]
     : [];
 
+// fountain's deterministic ACP fixture runtime (`fountain-fixture`), for the
+// one account named. A real ACP process in the sandbox, no model and no
+// inference credential: what an offline turn can complete against. Only
+// accepted on the emulated plane; see params.ts.
+const acpFixtureEnv = acpFixtureUserId
+  ? [
+      { name: "DEPLOYED_ACP_FIXTURE_ENABLED", value: "true" },
+      { name: "DEPLOYED_ACP_FIXTURE_USER_ID", value: acpFixtureUserId },
+    ]
+  : [];
+
 /**
  * What the data plane is, said on the Deployment itself.
  *
@@ -85,10 +96,18 @@ const dataPlaneAnnotations: Record<string, string> = spritesBaseUrl
       "fountain-ops/sprites-base-url": spritesBaseUrl,
       "fountain-ops/sprites-token-secret": spritesTokenSecret,
     }
-  : {
-      "fountain-ops/data-plane": seams.dataPlane,
-      "fountain-ops/sprites-base-url": spritzerBaseUrl ?? "https://api.sprites.dev",
-    };
+  : spritzerBaseUrl
+    ? {
+        "fountain-ops/data-plane": seams.dataPlane,
+        "fountain-ops/sprites-base-url": spritzerBaseUrl,
+        // container: sprites are pods running real commands; interpreter:
+        // the scripted echo. What a turn can reach depends on which.
+        "fountain-ops/spritzer-exec": spritzerExec,
+      }
+    : {
+        "fountain-ops/data-plane": seams.dataPlane,
+        "fountain-ops/sprites-base-url": "https://api.sprites.dev",
+      };
 
 const clusteringPorts = tier.clustered
   ? [
@@ -245,6 +264,7 @@ export const deployment = new Deployment({
               // about the app changes, which is what makes the local path
               // exercise the real one.
               ...dataPlaneEnv,
+              ...acpFixtureEnv,
             ],
             // Everything secret-shaped comes from the Secret, whoever made it.
             envFrom: [{ secretRef: { name: secretName } }],

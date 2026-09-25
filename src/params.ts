@@ -19,7 +19,7 @@ import { params } from "@intentius/chant/params";
 import { resolveTier, sizeShape, defaultSize, type Tier, type Size } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
 import { FOUNTAIN_IMAGE } from "./lib/fountain-image";
-import { resolveSeams, resolveSpritesBaseUrl, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
+import { resolveSeams, resolveSpritesBaseUrl, assertAcpFixtureUserId, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
@@ -200,7 +200,37 @@ export const flociImage = (params.flociImage as string | undefined) ?? "floci/fl
  * in this repo changing.
  */
 export const spritzerImage =
-  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.5.0";
+  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.6.0";
+
+/**
+ * How spritzer runs a sprite's exec. `container` (spritzer 0.6.0,
+ * INTENTIUS/spritzer#22) makes every sprite a pod in this namespace and runs
+ * the real command in it, which is what lets a turn complete: fountain's ACP
+ * runtime actually starts and answers `initialize`. `interpreter` is the old
+ * scripted echo, kept for anyone pinning spritzer below 0.6.0.
+ */
+export const spritzerExec = (params.spritzerExec as "container" | "interpreter" | undefined) ?? "container";
+
+/**
+ * The image every sprite pod runs in container mode. spritzer's default,
+ * Debian with node, git, python3 and curl; node is what fountain's ACP
+ * fixture runtime needs. About 1.1GB on first pull.
+ */
+export const spritzerSpriteImage =
+  (params.spritzerSpriteImage as string | undefined) ?? "node:22-bookworm";
+
+/**
+ * The one account fountain's deterministic ACP fixture runtime is enabled for
+ * (`DEPLOYED_ACP_FIXTURE_ENABLED` / `_USER_ID`, fountain v0.21.0). The fixture
+ * is a real ACP process in the sandbox that needs no model and no inference
+ * credential, which is what lets `just e2e` assert a completed turn offline.
+ * Refused unless the data plane is the local emulator: it bypasses inference
+ * credentials, so it has no business on an instance serving real tenants.
+ */
+export const acpFixtureUserId = assertAcpFixtureUserId(
+  seams,
+  params.acpFixtureUserId as string | undefined,
+);
 
 /**
  * dataPlane=wisp: the Sprites-compatible endpoint fountain is pointed at, as

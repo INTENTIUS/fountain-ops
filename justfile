@@ -65,7 +65,12 @@ announce: _require-cluster
     echo "  fountain    ${url:-http://localhost:4000}   (reach it with: just forward)"
     echo "  data plane  ${plane:-unknown} -> ${endpoint:-unknown}"
     case "$plane" in
-      spritzer) echo "              the in-cluster emulator: turns stop at the ACP handshake (#91)" ;;
+      spritzer)
+        if [ "$(ann spritzer-exec)" = "container" ]; then
+          echo "              the in-cluster emulator, container mode: every sprite is a pod in {{ns}}"
+        else
+          echo "              the in-cluster emulator, interpreter mode: turns stop at the ACP handshake (#91)"
+        fi ;;
       wisp)     echo "              token from Secret $(ann sprites-token-secret), key SPRITES_TOKEN" ;;
     esac
     echo "  next        just register you@example.com   (an API key for chant's fountain profile)"
@@ -650,67 +655,34 @@ e2e:
       || fail "just register printed no FOUNTAIN_TOKEN"
     echo "  ✓ FOUNTAIN_ENDPOINT and FOUNTAIN_TOKEN, and the key authenticates"
 
-    # The conversation gate asserts the plumbing that is OURS and observes
-    # the rest.
+    # The conversation gate: a turn completes, on a spritzer pod.
     #
-    # It used to pin the turn's outcome to the path taken, per pin — reattach
-    # implies orphaned, fresh implies whatever this version's emulator turn
-    # ends as — and that pinning ate three rewrites in two days as upstream
-    # actively works on making turns complete (fountain#606, #608, the
-    # native-arch builds moving the #67 race). Asserting a behavior somebody
-    # is mid-change on turns their every improvement into our red build and
-    # another "fewer turns work" edit here. So: what this deployment OWNS —
-    # a sandbox gets requested, a turn gets dispatched, events stream, and
-    # verify-conversation reaches a terminal shape it recognises — is
-    # asserted. Which terminal shape the turn reached is reported, not
-    # judged. The turn-outcome truth lives upstream until that work settles;
-    # spritzer#18 and #67 hold the history.
-    # This asserted a result, then a pairing, then stopped keeping score — each
-    # time because the outcome was a race nobody could pin. It is not a race any
-    # more, so this goes back to asserting the thing that matters: the turn
-    # completes.
+    # It asserted a completed turn once before, at fountain v0.6.1 against
+    # spritzer's interpreter (34 of 34), then lost it twice: to a race that
+    # fountain#603 and spritzer#19/#20 closed, and then for good to the Agent
+    # Client Protocol. From fountain v0.9.0 a turn opens an ACP session, and an
+    # interpreter that echoes command lines answers `initialize` with -32601,
+    # so for the v0.16.0 and v0.21.0 pins this gate could only assert the
+    # plumbing and name that refusal (#91).
     #
-    # What closed it was three fixes across two repos. fountain#603 stopped a
-    # lost stdin write from crashing the ConversationServer and orphaning the
-    # turn behind a reattach. spritzer#19 made an unupgraded GET on the exec
-    # path answer the session list instead of `426`. spritzer#20 — the one that
-    # actually ends the race — holds an unrecognised command's exec session open
-    # until stdin EOF, so fountain's prompt reaches a process that is still
-    # there. Measured at these pins: 34 conversations, 34 completed, including
-    # two batches fired back to back, which is the pacing that used to fail most.
-    #
-    # So `turn_orphaned` and `:command_exited` are both regressions now, not
-    # outcomes, and each names the pin that would have to have moved.
-    #
-    # The turn stopped completing again at fountain v0.16.0, and this time not
-    # because of a race: fountain speaks ACP to its runtimes from v0.9.0 and
-    # spritzer 0.5.0 cannot answer `initialize`. verify-conversation recognises
-    # that one refusal on the emulated plane and still asserts everything up to
-    # it — the sandbox, the dispatch, the stream. The ending is upstream's to
-    # give back; the two regressions above are still ours to catch.
-    step "the conversation gate"
+    # spritzer 0.6.0's container mode (INTENTIUS/spritzer#22) runs the real
+    # command in a pod, and fountain v0.21.0 ships a deterministic ACP fixture
+    # runtime that needs no model and no inference credential. Together they
+    # give back a turn that completes offline, so this asserts one again: the
+    # fixture is enabled for the e2e account, a persistent agent on it writes
+    # an artifact, the turn ends end_turn, and the artifact is read back out
+    # of the sprite pod with kubectl.
+    step "the conversation gate: a turn completes on a spritzer pod"
+    uid="$(printf '%s' "$reg" | grep -o '"user_id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    [ -n "$uid" ] || fail "the registration response carried no user_id to enable the ACP fixture for"
+    just params="--param acpFixtureUserId=$uid" apply >/dev/null 2>&1 || fail "applying with acpFixtureUserId failed"
+    just wait >/dev/null 2>&1 || fail "the app did not roll out with the ACP fixture enabled"
     export FOUNTAIN_PASSWORD="$pass"
-    out="$(just verify-conversation "$email" 2>&1 || true)"
-    printf '%s' "$out" | grep -q 'provision' \
-      || { echo "$out" | tail -20; fail "no provision stage — the sandbox was never requested"; }
-    if printf '%s' "$out" | grep -q "turn_orphaned"; then
-      echo "$out" | tail -20
-      fail "the turn was orphaned behind a reattach — fountain#603 or spritzer#19 regressed, or the pin rolled back"
-    fi
-    if printf '%s' "$out" | grep -q "command_exited"; then
-      echo "$out" | tail -20
-      fail "the runtime exited before the prompt was written — spritzer#20 regressed, or spritzerImage rolled back below 0.5.0"
-    fi
-    printf '%s' "$out" | grep -q "plumbing: sandbox provisioned" \
-      || { echo "$out" | tail -20; fail "the turn never reached the sandbox"; }
-    if printf '%s' "$out" | grep -q "failed the ACP handshake"; then
-      echo "  ✓ the plumbing held, and the turn stopped where the emulator does"
-    else
-      echo "  ✓ the turn completed, prompt echoed back — the echo, not a model"
-    fi
+    out="$(just verify-conversation "$email" fixture 2>&1 || true)"
+    printf '%s\n' "$out" | grep -q "✓ fixture: a turn completed" \
+      || { echo "$out" | tail -25; fail "no completed turn on a spritzer pod — #91 is open again"; }
+    printf '%s\n' "$out" | grep -E "✓|pod" | sed 's/^/  /'
 
-    # Every seam that needs a CRD, against a real API server rather than
-    # against our own expectations. No controllers, so nothing reconciles.
     step "a real API server accepts every seam"
     just crds >/dev/null
     just dry-run --param postgres=cnpg --param backups=barman-pitr \
@@ -1204,6 +1176,8 @@ register EMAIL PROFILE="local": _require-cluster
     code="$(curl -s -o /dev/null -w '%{http_code}' "$base/api/agents" -H "authorization: Bearer $key")"
     [ "$code" = "200" ] || { echo "  ✗ the minted key was refused by GET /api/agents ($code)" >&2; exit 1; }
     echo "  ✓ API key minted and accepted by GET /api/agents" >&2
+    uid="$(curl -s "$base/api/auth/me" -H "authorization: Bearer $key" | jq -r '.id // empty' 2>/dev/null || true)"
+    [ -z "$uid" ] || echo "  · user id $uid  (--param acpFixtureUserId=$uid enables fountain's ACP fixture for it)" >&2
 
     echo "export FOUNTAIN_ENDPOINT=$endpoint"
     echo "export FOUNTAIN_TOKEN=$key"
@@ -1251,7 +1225,7 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     #!/usr/bin/env bash
     set -euo pipefail
 
-    case "{{MODE}}" in plumbing|strict) ;; *) echo "MODE must be plumbing or strict" >&2; exit 2 ;; esac
+    case "{{MODE}}" in plumbing|strict|fixture) ;; *) echo "MODE must be plumbing, strict or fixture" >&2; exit 2 ;; esac
     # No apostrophe in this message. bash 3.2, which is what macOS ships, treats
     # one inside ${VAR:?...} as an opening quote and mis-parses the rest of the
     # script — the symptom is an "unbound variable" for something assigned two
@@ -1274,12 +1248,24 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
       envValues="$(kubectl get deploy fountain -n "{{ns}}" -o jsonpath='{.spec.template.spec.containers[0].env[*].value}' 2>/dev/null || true)"
       case "$envValues" in *fountain-spritzer*) plane=spritzer ;; esac
     fi
-    echo "  data plane: $plane"
+    # Which spritzer exec mode, for the same reason. Absent means a Deployment
+    # from before container mode existed, which was always the interpreter.
+    spritzerExec="$(kubectl get deploy fountain -n "{{ns}}" -o json 2>/dev/null | jq -r '.metadata.annotations["fountain-ops/spritzer-exec"] // "interpreter"' || echo interpreter)"
+    if [ "$plane" = "spritzer" ]; then echo "  data plane: spritzer ($spritzerExec)"; else echo "  data plane: $plane"; fi
+    interpreter=0
+    if [ "$plane" = "spritzer" ] && [ "$spritzerExec" != "container" ]; then interpreter=1; fi
 
-    if [ "{{MODE}}" = "strict" ] && [ "$plane" = "spritzer" ]; then
-      echo "  ✗ strict needs a real data plane. This deployment runs the emulator," >&2
-      echo "    which echoes the runtime command back instead of calling a model," >&2
-      echo "    so a green run here would prove nothing about a reply." >&2
+    if [ "{{MODE}}" = "fixture" ] && { [ "$plane" != "spritzer" ] || [ "$interpreter" = 1 ]; }; then
+      echo "  ✗ fixture runs fountain's ACP fixture on a spritzer pod, so it needs" >&2
+      echo "    dataPlane=spritzer in container mode and --param acpFixtureUserId." >&2
+      exit 2
+    fi
+
+    if [ "{{MODE}}" = "strict" ] && [ "$interpreter" = 1 ]; then
+      echo "  ✗ strict needs a data plane that runs the runtime. This deployment runs" >&2
+      echo "    spritzer's interpreter, which echoes the runtime command back instead" >&2
+      echo "    of calling a model, so a green run here would prove nothing about a reply." >&2
+      echo "    Container mode (--param spritzerExec=container) runs the real one." >&2
       echo "    Redeploy with --param dataPlane=sprites and a real SPRITES_TOKEN, or" >&2
       echo "    --param dataPlane=wisp --param spritesBaseUrl=<endpoint> and just sprites-token." >&2
       exit 1
@@ -1307,12 +1293,26 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
       -d "{\"email\":\"{{EMAIL}}\",\"password\":\"$FOUNTAIN_PASSWORD\"}" | jsonstr api_key)"
     [ -n "$key" ] || { echo "  ✗ could not get an API key for {{EMAIL}} — is it registered and verified?" >&2; exit 1; }
 
-    agent="$(curl -s -X POST "$base/api/agents" -H "authorization: Bearer $key" -H 'content-type: application/json' \
-      -d '{"name":"verify-throwaway","model":"anthropic/claude-sonnet-4-6","runtime":"claude"}' | jsonstr id)"
-    [ -n "$agent" ] || { echo "  ✗ could not create the throwaway agent" >&2; exit 1; }
+    # fixture: fountain's deterministic ACP runtime (v0.21.0), a real ACP
+    # process in the sandbox that needs no model. Enabled for one account by
+    # --param acpFixtureUserId; the prompt is its scenario, not prose. The
+    # agent is persistent (fountain ADR 0023), the mode a studio box runs in,
+    # so its conversation ends `idle` rather than terminal and the sprite pod
+    # outlives the turn.
+    if [ "{{MODE}}" = "fixture" ]; then
+      agentBody='{"name":"verify-fixture","model":"fixture/deterministic-v1","runtime":"fountain-fixture","sandbox_mode":"persistent"}'
+      nonce="$( (uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid) | tr 'A-F' 'a-f')"
+      prompt="$(jq -nc --arg n "$nonce" '{fixture: "fountain-acp-fixture/1", scenario: "write", nonce: $n}')"
+    else
+      agentBody='{"name":"verify-throwaway","model":"anthropic/claude-sonnet-4-6","runtime":"claude"}'
+      prompt="Reply with the single word: fountain"
+    fi
+    created="$(curl -s -X POST "$base/api/agents" -H "authorization: Bearer $key" -H 'content-type: application/json' -d "$agentBody")"
+    agent="$(printf '%s' "$created" | jsonstr id)"
+    [ -n "$agent" ] || { echo "  ✗ could not create the throwaway agent: $created" >&2; exit 1; }
 
     conv="$(curl -s -X POST "$base/api/conversations" -H "authorization: Bearer $key" -H 'content-type: application/json' \
-      -d "{\"agent_id\":\"$agent\",\"prompt\":\"Reply with the single word: fountain\"}" | jsonstr id)"
+      -d "$(jq -nc --arg a "$agent" --arg p "$prompt" '{agent_id: $a, prompt: $p}')" | jsonstr id)"
     [ -n "$conv" ] || { echo "  ✗ could not open a conversation" >&2; exit 1; }
     echo "  conversation $conv"
 
@@ -1328,6 +1328,25 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
 
     fail() { echo "  ✗ $1" >&2; echo "$ev" | head -30 >&2; exit 1; }
     printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
+
+    if [ "{{MODE}}" = "fixture" ]; then
+      printf '%s' "$ev" | grep -q '"stage":"turn"' || fail "no turn stage — nothing ran in the sandbox"
+      printf '%s' "$ev" | grep -qF 'stop_reason\":\"end_turn' \
+        || fail "the turn did not end with end_turn"
+      printf '%s' "$ev" | grep -qF "fixture:artifact:$nonce:writes=1" \
+        || fail "the fixture never reported writing its artifact"
+      # And the artifact is on a spritzer pod, not somewhere fountain made up:
+      # read it back out of the sprite with kubectl, around fountain entirely.
+      found=""
+      for p in $(kubectl get pods -n "{{ns}}" -o name | grep '^pod/sprite-' || true); do
+        got="$(kubectl exec -n "{{ns}}" "$p" -c sprite -- sh -c "cat /home/sprite/.fountain-acp-fixture/*-$nonce.txt" 2>/dev/null || true)"
+        if [ "$got" = "$nonce" ]; then found="${p#pod/}"; break; fi
+      done
+      [ -n "$found" ] || fail "no sprite pod holds the artifact the turn reported writing"
+      echo "  ✓ fixture: a turn completed (end_turn) on spritzer pod $found,"
+      echo "    and its artifact reads back from the pod. ACP end to end, no model."
+      exit 0
+    fi
     printf '%s' "$ev" | grep -q '"stage":"turn"'      || fail "no turn stage — nothing ran in the sandbox"
     printf '%s' "$ev" | grep -q 'event: output'       || fail "the turn produced no output at all"
 
@@ -1352,15 +1371,15 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     # So that refusal is a recognised ending on the emulated plane rather than
     # a red build — named exactly, never tolerated generically. A real data
     # plane still has to exit 0, and so does the emulator the day it answers.
-    if [ "$plane" = "spritzer" ] && printf '%s' "$ev" | grep -qF ':acp_error, :initialize'; then
+    if [ "$interpreter" = 1 ] && printf '%s' "$ev" | grep -qF ':acp_error, :initialize'; then
       echo "  ✓ plumbing: sandbox provisioned, turn dispatched, output streamed"
       echo "    the turn then failed the ACP handshake, which is as far as"
-      echo "    spritzer 0.5.0 goes against a fountain that speaks ACP"
+      echo "    spritzer's interpreter goes against a fountain that speaks ACP"
       echo "    (fountain#671, #674). Not a claim about a reply, either way."
     else
       printf '%s' "$ev" | grep -q '"exit_code\\":0' || fail "the turn did not exit 0"
       echo "  ✓ plumbing: sandbox provisioned, turn ran, output streamed, exit 0"
-      if [ "$plane" = "spritzer" ]; then
+      if [ "$interpreter" = 1 ]; then
         echo "    (the echo, not a model reply)"
       fi
     fi

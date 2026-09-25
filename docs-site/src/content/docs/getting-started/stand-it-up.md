@@ -34,7 +34,7 @@ GET /health via an in-cluster probe...
 
   fountain    http://localhost:4000   (reach it with: just forward)
   data plane  spritzer -> http://fountain-spritzer.fountain.svc.cluster.local:4290
-              the in-cluster emulator: turns stop at the ACP handshake (#91)
+              the in-cluster emulator, container mode: every sprite is a pod in fountain
   next        just register you@example.com   (an API key for chant's fountain profile)
 ```
 

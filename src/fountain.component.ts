@@ -127,7 +127,7 @@ export const dataPlane: Component | undefined =
     ? {
         name: "data-plane",
         dependsOn: [],
-        liveNames: ["spritzerDeployment", "spritzerService"],
+        liveNames: ["spritzerDeployment", "spritzerService", "spritzerServiceAccount", "spritzerRole", "spritzerRoleBinding"],
         deploy: [rolloutReady("fountain-spritzer", "spritzer serves the Sprites API, not a health path")],
       }
     : undefined;

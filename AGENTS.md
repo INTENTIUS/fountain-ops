@@ -29,11 +29,16 @@ anything written in the present tense anywhere else, this file included.
   once: both replicas race to create the migrations table and the loser's
   retry wins ([#90](https://github.com/INTENTIUS/fountain-ops/issues/90)).
   At `light`, any restart is a real finding.
-- A conversation turn against the emulator fails at the ACP handshake, every
-  time: fountain speaks ACP to its runtimes from v0.9.0 and spritzer 0.5.0
-  answers `initialize is not supported`. `just verify-conversation` asserts
-  everything up to that and names the refusal. Do not chase the ending — it is
-  spritzer's to give back — and do not add assertions about it.
+- A conversation turn completes against the emulator again, in spritzer's
+  container mode (0.6.0, the default): every sprite is a pod, and `just e2e`
+  runs fountain's deterministic ACP fixture runtime (`acpFixtureUserId`) in
+  one, needing no model. The `claude` runtime also starts in a sprite pod but
+  stops at model selection without an inference credential; that is expected,
+  not a regression. `spritzerExec=interpreter` still stops at the ACP
+  handshake (#91).
+- `networking_type: limited` fails provisioning on spritzer 0.6.0: fountain
+  rejects spritzer's answer to the network policy call. Use `unrestricted`
+  locally until spritzer and fountain agree.
 
 ## Things that will waste your time if edited directly
 

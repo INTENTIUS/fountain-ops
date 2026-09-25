@@ -255,7 +255,14 @@ export default {
     // dataPlane=spritzer. Pinned rather than :latest — the emulator decides
     // what a local conversation does, so a floating tag would change what a
     // green run means with nothing in this repo changing.
-    spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.5.0" },
+    spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.6.0" },
+    // dataPlane=spritzer: "container" makes every sprite a pod and runs real
+    // commands (spritzer >= 0.6.0); "interpreter" is the scripted echo.
+    spritzerExec: { type: "string", enum: ["container", "interpreter"], default: "container" },
+    spritzerSpriteImage: { type: "string", default: "node:22-bookworm" },
+    // A registered user's id: enables fountain's deterministic ACP fixture
+    // runtime for that one account. dataPlane=spritzer only.
+    acpFixtureUserId: { type: "string", required: false },
     // dataPlane=wisp. The endpoint is required there and refused with any
     // other data plane; the token is the SPRITES_TOKEN key of this Secret,
     // which `just sprites-token` creates.

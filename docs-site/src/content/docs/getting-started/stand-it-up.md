@@ -31,6 +31,11 @@ worked:
 GET /health via an in-cluster probe...
 {"status":"ok"}
   ✓ /health answered
+
+  fountain    http://localhost:4000   (reach it with: just forward)
+  data plane  spritzer -> http://fountain-spritzer.fountain.svc.cluster.local:4290
+              the in-cluster emulator: turns stop at the ACP handshake (#91)
+  next        just register you@example.com   (an API key for chant's fountain profile)
 ```
 
 Then reach it:
@@ -61,6 +66,18 @@ until an admin exists, the role goes to whoever verifies first. Registration
 is open by default for the same reason; close it with
 `registrationEnabled=false` once your account exists. You do not need admin
 to use the instance.
+
+For chant, or anything else that wants a key rather than a browser session:
+
+```bash
+eval "$(just register you@example.com)"   # prompts for a password
+```
+
+registers the account (or reuses it), mints an API key and checks it
+authenticates, then leaves `FOUNTAIN_ENDPOINT` and `FOUNTAIN_TOKEN` set in your
+shell. Those are what chant's fountain lexicon reads when no
+`fountain.profiles` entry names an endpoint, and the recipe prints the profile
+block too, for a project that would rather name one.
 
 Scripts and agents register through `POST /api/auth/register`, which does the
 same thing; that curl, and the API key the conversation gate authenticates

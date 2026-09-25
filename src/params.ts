@@ -19,7 +19,7 @@ import { params } from "@intentius/chant/params";
 import { resolveTier, sizeShape, defaultSize, type Tier, type Size } from "./lib/tiers";
 import { targetShape, type Target } from "./lib/targets";
 import { FOUNTAIN_IMAGE } from "./lib/fountain-image";
-import { resolveSeams, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
+import { resolveSeams, resolveSpritesBaseUrl, assertSixFieldSchedule, assertIngressClass, type Seams } from "./lib/seams";
 
 export const env = (params.env as string | undefined) ?? "dev";
 export const namespace = (params.namespace as string | undefined) ?? "fountain";
@@ -201,6 +201,23 @@ export const flociImage = (params.flociImage as string | undefined) ?? "floci/fl
  */
 export const spritzerImage =
   (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.5.0";
+
+/**
+ * dataPlane=wisp: the Sprites-compatible endpoint fountain is pointed at, as
+ * SPRITES_BASE_URL. Required there and refused anywhere else; see
+ * resolveSpritesBaseUrl in lib/seams.ts for why each refusal exists.
+ */
+export const spritesBaseUrl = resolveSpritesBaseUrl(seams, params.spritesBaseUrl as string | undefined);
+
+/**
+ * dataPlane=wisp: the Secret holding the endpoint's bearer token, under the
+ * key SPRITES_TOKEN. Its own Secret rather than a key in the platform one,
+ * because `just secret` mints the platform Secret once and never rewrites it,
+ * and a token for somebody else's server is the one value in there an
+ * operator has to bring. `just sprites-token` creates it.
+ */
+export const spritesTokenSecret =
+  (params.spritesTokenSecret as string | undefined) ?? "fountain-sprites-token";
 
 // ── traefik seam ───────────────────────────────────────────────────────────
 /** Where the redirect middleware lives. Same namespace unless told otherwise. */

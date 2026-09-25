@@ -17,6 +17,12 @@ instead of a stub of it.
 | `k3d` | `spritzer`. Offline there is no Sprites account, and a placeholder token against the real API is a 401 nobody sees until they talk to an agent |
 | `kubernetes` | `sprites` |
 
+A third value, `wisp`, points the same URL at a Sprites-compatible server
+somebody else runs; see [A wisp endpoint](#a-wisp-endpoint). Whichever is in
+use, the Deployment says so in its `fountain-ops/data-plane` and
+`fountain-ops/sprites-base-url` annotations, and `just up` ends by printing
+both.
+
 ## Provisioning works
 
 Creating a conversation creates a sprite **and populates it**. fountain writes
@@ -189,7 +195,60 @@ were outcomes once and are regressions today.
 
 ## For real conversations
 
-Set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret.
+Set `dataPlane=sprites` and put a real `SPRITES_TOKEN` in the Secret, or use a
+wisp endpoint.
+
+## A wisp endpoint
+
+[wisp](https://github.com/arugula-salad/wisp) is a Sprites-compatible server on
+Firecracker, public at `https://wisp.widgets.wtf` and runnable on any Linux host
+with `/dev/kvm`. It is the production model for a studio box, and the laptop
+tier accepts it:
+
+```bash
+P="--param dataPlane=wisp --param spritesBaseUrl=https://wisp.widgets.wtf"
+just params="$P" sprites-token     # the wisp token; prompts, or reads $SPRITES_TOKEN
+just params="$P" up
+```
+
+fountain gets `SPRITES_BASE_URL` set to `spritesBaseUrl` and `SPRITES_TOKEN`
+from the `SPRITES_TOKEN` key of the Secret `spritesTokenSecret` names
+(`fountain-sprites-token` unless told otherwise). That explicit entry overrides
+the placeholder the platform Secret carries on k3d, so the platform Secret is
+never rewritten. Nothing is deployed for the data plane.
+
+What is refused, at build time:
+
+```
+dataPlane="wisp" needs spritesBaseUrl — the Sprites-compatible endpoint, e.g.
+  --param spritesBaseUrl=https://wisp.widgets.wtf. Without it fountain falls back
+  to https://api.sprites.dev and sends the wisp token there.
+spritesBaseUrl is only read with dataPlane="wisp" — dataPlane="sprites" is Fly's
+  own API at https://api.sprites.dev. ...
+spritesBaseUrl "https://tok@wisp.widgets.wtf" carries a query, fragment or credentials. ...
+```
+
+and at apply time, before anything is applied, a missing token Secret:
+
+```
+  ✗ dataPlane=wisp needs the endpoint's token in Secret fountain-sprites-token (key SPRITES_TOKEN),
+    and there is none in namespace fountain.
+```
+
+`verify-conversation` treats `wisp` as a real data plane: the turn has to exit
+0, the emulator's handshake exemption does not apply, and `strict` is allowed.
+
+What has been checked, and what has not. On k3d, `dataPlane=wisp` was pointed at
+a second spritzer standing in for a wisp host: the app received the stand-in's
+URL and the token from its Secret (not the platform Secret's placeholder),
+provisioned a sandbox there, dispatched a turn into it, and
+`verify-conversation` then failed the turn for not exiting 0, which is what it
+should say about spritzer 0.5.0 on a plane that gets no exemption. No real wisp
+host has been used from here. Two things only that can show: that wisp accepts
+fountain's calls with a real token, and whether a turn needs the sprite to reach
+fountain back at `PUBLIC_URL`, which from a public wisp host a laptop's
+`http://localhost:4000` is not. The hand check, and its transcript, belong on
+[#121](https://github.com/INTENTIUS/fountain-ops/issues/121).
 
 :::danger[The token is a platform credential]
 `SPRITES_TOKEN` is a **platform** credential, never a tenant one. It must not

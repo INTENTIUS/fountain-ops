@@ -48,8 +48,15 @@ export type MonitoringMode = "omit" | "prometheus-operator";
  * deployment exercises the real control-plane path instead of a stub.
  *
  * What it is not is an agent runtime. See src/data/spritzer.ts.
+ *
+ * `wisp` is a Sprites-compatible server somebody else runs
+ * (arugula-salad/wisp, on Firecracker): wisp.widgets.wtf, or any Linux host
+ * with /dev/kvm. It is the production model for a studio box. Same seam
+ * again, a base URL and a token, except both are the operator's: the URL is
+ * `spritesBaseUrl`, the token is read from a Secret of its own, and nothing is
+ * deployed here for it.
  */
-export type DataPlaneMode = "sprites" | "spritzer";
+export type DataPlaneMode = "sprites" | "spritzer" | "wisp";
 /**
  * Where the backup seam uploads to.
  *
@@ -123,7 +130,7 @@ export function resolveSeams(defaults: Seams, over: SeamOverrides = {}, ha = fal
   if (s.dataPlane === "spritzer" && ha) {
     throw new Error(
       `dataPlane="spritzer" is an in-memory emulator in a single pod and cannot back an "ha" deployment — ` +
-        `use dataPlane="sprites" with a real SPRITES_TOKEN, or a non-ha tier for local work.`,
+        `use dataPlane="sprites" with a real SPRITES_TOKEN, dataPlane="wisp" with spritesBaseUrl, or a non-ha tier for local work.`,
     );
   }
 
@@ -212,4 +219,59 @@ export function assertIngressClass(s: Seams, ingressClassName?: string): void {
       `happens to have a default one, and applies cleanly either way. Set --param ingressClassName=nginx (or traefik, or ` +
       `whatever \`kubectl get ingressclass\` lists), or use ingress="omit".`,
   );
+}
+
+/**
+ * The Sprites endpoint an external data plane is reached at, checked and
+ * normalised, or undefined when this data plane has none to give.
+ *
+ * Three refusals, each for a build that would apply cleanly and then not be
+ * the deployment it says it is:
+ *
+ *   wisp with no URL    fountain falls back to https://api.sprites.dev when
+ *                       SPRITES_BASE_URL is unset, so this would send the wisp
+ *                       token to Fly and fail as a 401 at the first sandbox.
+ *   a URL on another    `sprites` means Fly's API and `spritzer` means the
+ *   data plane          emulator this build deploys; a URL beside either is
+ *                       either ignored or a second answer to the same question.
+ *   not http(s)         fountain's client takes a base URL and appends paths;
+ *                       anything else fails at the first provision, far from
+ *                       the parameter that caused it.
+ *
+ * A trailing slash is dropped rather than refused. The client joins paths onto
+ * the base, and `https://wisp.widgets.wtf/` would become `//v1/sprites`.
+ */
+export function resolveSpritesBaseUrl(s: Seams, spritesBaseUrl?: string): string | undefined {
+  const url = spritesBaseUrl?.trim() || undefined;
+  if (s.dataPlane !== "wisp") {
+    if (url) {
+      throw new Error(
+        `spritesBaseUrl is only read with dataPlane="wisp" — dataPlane="${s.dataPlane}" ` +
+          (s.dataPlane === "sprites" ? `is Fly's own API at https://api.sprites.dev` : `is the emulator this build deploys in the cluster`) +
+          `. Set --param dataPlane=wisp to use ${url}, or drop spritesBaseUrl.`,
+      );
+    }
+    return undefined;
+  }
+  if (!url) {
+    throw new Error(
+      `dataPlane="wisp" needs spritesBaseUrl — the Sprites-compatible endpoint, e.g. ` +
+        `--param spritesBaseUrl=https://wisp.widgets.wtf. Without it fountain falls back to https://api.sprites.dev ` +
+        `and sends the wisp token there.`,
+    );
+  }
+  if (!URL.canParse(url)) {
+    throw new Error(`spritesBaseUrl "${url}" is not a URL — give the scheme and host, e.g. https://wisp.widgets.wtf.`);
+  }
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(`spritesBaseUrl "${url}" must be http or https — fountain's Sprites client speaks HTTP and upgrades to WebSocket itself.`);
+  }
+  if (parsed.search || parsed.hash || parsed.username || parsed.password) {
+    throw new Error(
+      `spritesBaseUrl "${url}" carries a query, fragment or credentials. It is a base URL that paths are appended to, ` +
+        `and the token belongs in the Secret named by spritesTokenSecret, not in the URL.`,
+    );
+  }
+  return url.replace(/\/+$/, "");
 }

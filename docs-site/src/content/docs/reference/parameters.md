@@ -59,7 +59,7 @@ refusal, are on [Seams](/fountain-ops/reference/seams/).
 | `tls` | `omit` · `cert-manager` | `omit` | `omit` | `cert-manager` with `ingress=omit` |
 | `backups` | `omit` · `pg-dump` · `barman-pitr` | `pg-dump` | `omit` | `barman-pitr` without `postgres=cnpg`; `omit` with `storage=floci` |
 | `monitoring` | `omit` · `prometheus-operator` | `omit` | `omit` | — |
-| `dataPlane` | `sprites` · `spritzer` | `spritzer` | `sprites` | `spritzer` at `tier=ha` |
+| `dataPlane` | `sprites` · `spritzer` · `wisp` | `spritzer` | `sprites` | `spritzer` at `tier=ha`; `wisp` without `spritesBaseUrl` |
 | `storage` | `s3` · `floci` | `floci` | `s3` | `floci` at `tier=ha`; `floci` with `backups=omit` |
 
 Which of those refusals fire on the default seams of each target is asserted in
@@ -91,6 +91,8 @@ what has actually run.
 | `backupS3Endpoint` | a URL | floci's in-cluster Service when `storage=floci`, otherwise unset | Unset means the AWS default endpoint — see below |
 | `flociImage` | an image reference | `floci/floci:1.5.34` | Pinned. `storage=floci` |
 | `spritzerImage` | an image reference | `ghcr.io/intentius/spritzer:0.5.0` | Pinned, because the emulator decides what a local conversation does. `dataPlane=spritzer` |
+| `spritesBaseUrl` | an `http`/`https` base URL | unset | fountain's `SPRITES_BASE_URL` for `dataPlane=wisp`, which requires it. Refused with any other data plane, and refused with a query, fragment or credentials in it; a trailing slash is dropped. See [The data plane](/fountain-ops/reference/data-plane/#a-wisp-endpoint) |
+| `spritesTokenSecret` | any string | `fountain-sprites-token` | The Secret whose `SPRITES_TOKEN` key is the endpoint's bearer token, for `dataPlane=wisp`. `just sprites-token` creates it, and `apply` refuses to run while it is missing |
 
 ### Infisical
 

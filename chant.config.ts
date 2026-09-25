@@ -196,7 +196,10 @@ export default {
     // of the Sprites API running in the cluster — the local default, because
     // offline there is no account and a placeholder token against the real
     // API is a 401 nobody sees until they talk to an agent.
-    dataPlane: { type: "string", enum: ["sprites", "spritzer"], required: false },
+    // "wisp" is a Sprites-compatible server somebody else runs (arugula-salad/
+    // wisp): fountain is pointed at spritesBaseUrl with the token from
+    // spritesTokenSecret, and nothing is deployed for it.
+    dataPlane: { type: "string", enum: ["sprites", "spritzer", "wisp"], required: false },
     // Where the backup job uploads. "floci" is an S3 emulator in the cluster —
     // the local default, because the alternative is a backup job with nowhere
     // to put anything.
@@ -253,6 +256,11 @@ export default {
     // what a local conversation does, so a floating tag would change what a
     // green run means with nothing in this repo changing.
     spritzerImage: { type: "string", default: "ghcr.io/intentius/spritzer:0.5.0" },
+    // dataPlane=wisp. The endpoint is required there and refused with any
+    // other data plane; the token is the SPRITES_TOKEN key of this Secret,
+    // which `just sprites-token` creates.
+    spritesBaseUrl: { type: "string", required: false },
+    spritesTokenSecret: { type: "string", default: "fountain-sprites-token" },
     // storage=floci. Pinned for the same reason spritzer is.
     flociImage: { type: "string", default: "floci/floci:1.5.34" },
     // Unset means the cluster's default StorageClass, which is what k3d wants.

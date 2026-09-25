@@ -275,3 +275,27 @@ export function resolveSpritesBaseUrl(s: Seams, spritesBaseUrl?: string): string
   }
   return url.replace(/\/+$/, "");
 }
+
+/**
+ * The ACP fixture account, checked: a UUID, and only on the emulated plane.
+ *
+ * fountain enables its fixture runtime for exactly one user id, and a value
+ * that is not a UUID is silently treated as "no fixture" upstream, so a typo
+ * would surface as a 422 on agent create far from the parameter. And the
+ * fixture skips inference credentials entirely, which is fine on a laptop's
+ * emulator and wrong anywhere real tenants are served.
+ */
+export function assertAcpFixtureUserId(s: Seams, userId?: string): string | undefined {
+  const id = userId?.trim() || undefined;
+  if (!id) return undefined;
+  if (s.dataPlane !== "spritzer") {
+    throw new Error(
+      `acpFixtureUserId turns on fountain's deterministic ACP fixture, which bypasses inference credentials — ` +
+        `it is only accepted with dataPlane="spritzer", not "${s.dataPlane}".`,
+    );
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(`acpFixtureUserId "${id}" is not a user id (a UUID) — fountain would ignore it and refuse fixture agents.`);
+  }
+  return id;
+}

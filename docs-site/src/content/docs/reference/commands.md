@@ -102,7 +102,7 @@ returns an error tuple that sets no exit status.
 | target | what it does |
 |---|---|
 | `verify` | `GET /health` from a curl pod inside the cluster, so no port-forward is needed. Proves the release booted and nothing more |
-| `verify-conversation EMAIL [MODE]` | Makes a throwaway agent, opens one conversation, asserts the event stream, and tears both down even when an assertion fails. `MODE` is `plumbing` (default) or `strict`; `strict` refuses to run against `dataPlane=spritzer`. Needs a verified account and `$FOUNTAIN_PASSWORD` in the environment rather than on the command line. See [The data plane](/fountain-ops/reference/data-plane/) |
+| `verify-conversation EMAIL [MODE]` | Makes a throwaway agent, opens one conversation, asserts the event stream, and tears both down even when an assertion fails. `MODE` is `plumbing` (default), `strict` or `fixture`; `strict` refuses spritzer's interpreter, and `fixture` runs fountain's ACP fixture runtime on a spritzer pod (container mode, `acpFixtureUserId`) and asserts a completed turn. Needs a verified account and `$FOUNTAIN_PASSWORD` in the environment rather than on the command line. See [The data plane](/fountain-ops/reference/data-plane/) |
 | `e2e` | Stands up from nothing, asserts every documented claim, tears down. This is the whole of CI's e2e job, runnable on a laptop. On failure it leaves the cluster up on purpose so there is something to look at. See [CI and the site](/fountain-ops/reference/ci/) |
 
 `e2e` calls `just up` and `just down` itself, so it wants no cluster

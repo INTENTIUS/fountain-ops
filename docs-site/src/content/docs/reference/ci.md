@@ -54,44 +54,35 @@ Stands up from nothing and asserts, in order:
 | the backup | taken, then restored into a throwaway and table-matched against live |
 | the account path | register over the API, verified (self-verified on pins past v0.4.0; `verify-email` is idempotent either way), headless throughout |
 | the first-admin bootstrap | the account ends up admin — in-app on pins past v0.4.0 (`promote-admin` reports it already admin), granted by the release task on older ones |
-| the conversation gate | a sandbox is provisioned, the turn is dispatched into it and its output streams back, against the emulated data plane |
+| the conversation gate | a turn **completes** on a spritzer pod: fountain's ACP fixture runtime is enabled for the e2e account, a persistent agent writes an artifact, the turn ends `end_turn`, and the artifact is read back out of the sprite pod with `kubectl exec` |
 | every seam | `just crds` then `just dry-run`, validated by a real API server |
 
 Then it tears down. On failure it leaves the cluster up so there is something
 to look at; CI runs its own teardown regardless.
 
-:::caution[The conversation gate stops at the ACP handshake]
-It asserts the sandbox, the dispatch and the stream, and then one recognised
-ending rather than a completed turn.
+:::note[The conversation gate asserts a completed turn]
+For the `v0.16.0` and `v0.21.0` pins against spritzer `0.5.0` it could not:
+fountain speaks the Agent Client Protocol to its runtimes from `v0.9.0`, and an
+interpreter that echoes command lines answers `initialize` with `-32601`, so
+the gate asserted the plumbing and named that refusal
+([#91](https://github.com/INTENTIUS/fountain-ops/issues/91)).
 
-fountain speaks the Agent Client Protocol to its runtimes from `v0.9.0`
-([fountain#671](https://github.com/BinaryBourbon/fountain/pull/671),
-[#674](https://github.com/BinaryBourbon/fountain/pull/674)), so a turn opens
-`claude-agent-acp` and sends `initialize`. spritzer `0.5.0` echoes command
-lines and speaks no JSON-RPC, so it answers `-32601` and the turn ends
-`failed`. Deterministic, and nothing here can close it — spritzer has to
-answer, and `0.5.0` is its newest release. The gate says so out loud rather
-than going red every run:
-
-```
-✓ plumbing: sandbox provisioned, turn dispatched, output streamed
-  the turn then failed the ACP handshake, which is as far as
-  spritzer 0.5.0 goes against a fountain that speaks ACP
-```
-
-Any other ending still fails, including the two this gate was built around,
-each of which names the pin that must have moved:
+Two upstream releases gave the ending back. spritzer `0.6.0`'s container mode
+([spritzer#22](https://github.com/INTENTIUS/spritzer/issues/22)) makes every
+sprite a pod and runs the real command in it, and fountain `v0.21.0` ships a
+deterministic ACP fixture runtime that needs no model and no inference
+credential. The gate enables the fixture for the account it just registered
+(`--param acpFixtureUserId`), and asserts:
 
 ```
-✗ the turn was orphaned behind a reattach — fountain#603 or spritzer#19
-  regressed, or the pin rolled back
-✗ the runtime exited before the prompt was written — spritzer#20 regressed,
-  or spritzerImage rolled back below 0.5.0
+✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-…,
+  and its artifact reads back from the pod. ACP end to end, no model.
 ```
 
-A real data plane is still held to a turn that exits 0, and so is the emulator
-the day it answers `initialize`. [The data plane](/fountain-ops/reference/data-plane/)
-has the mechanism, and the history of describing this row wrong four times.
+The fixture is not a model, so this still says nothing about a reply; that is
+`verify-conversation … strict` against a data plane with an inference
+credential. `spritzerExec=interpreter` keeps the old gate's recognised
+handshake refusal for anyone pinning spritzer below `0.6.0`.
 :::
 
 Actions are pinned by commit SHA, tools by release version. A tag is a moving

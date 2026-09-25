@@ -30,10 +30,42 @@ its `fountain` skill and a `/home/sprite/.env` carrying a scoped token and the
 conversation id into the sprite's filesystem, and spritzer then reports that
 sprite `running` with both files present.
 
-## Turns stop at the handshake
+## Turns complete, in container mode
 
-At `fountain v0.16.0` through `v0.21.0` (the pin) and `spritzer 0.5.0`, a turn is dispatched into the
-sandbox and then fails, for a reason neither end of this repo can fix.
+`spritzerExec=container`, the default from spritzer `0.6.0`
+([spritzer#22](https://github.com/INTENTIUS/spritzer/issues/22)), makes every
+sprite a pod in the `fountain` namespace (`sprite-<name>`, from
+`spritzerSpriteImage`, `node:22-bookworm` by default) and runs the real
+command in it. spritzer gets a ServiceAccount with a Role that can create,
+read, delete and exec into pods in that namespace, and nothing cluster-wide.
+Sprite pods run as root, so a namespace under the restricted Pod Security
+Standard rejects them.
+
+What runs in the pod is whatever fountain's runtime launches, and two have been
+seen:
+
+- `fountain-fixture`, fountain `v0.21.0`'s deterministic ACP runtime, enabled
+  for one account with `--param acpFixtureUserId=<user id>`. A real ACP process
+  that needs no model. A turn completes: `initialize`, `session/new`, the
+  prompt, a file written in the pod, `end_turn`. `just e2e` asserts exactly
+  this on every run, and reads the file back out of the pod with `kubectl exec`.
+- `claude`, the default runtime. `claude-agent-acp` is installed into the pod,
+  answers `initialize` and opens a session, then stops at model selection
+  (`Could not select model claude-sonnet-4-6 … check account access`) because
+  the instance has no inference credential. With one, that is a real turn.
+
+One thing does not work yet: an Environment with `networking_type: limited`
+fails at the network stage, because fountain rejects spritzer's answer to the
+network policy call (`{:network_policy, {:invalid, {:http, 200, %{"rules" =>
+[…]}}}}`), with an empty allowlist or one host. `unrestricted` provisions.
+
+Checkpoints answer `501` in container mode
+([spritzer#23](https://github.com/INTENTIUS/spritzer/issues/23)).
+
+## Turns stop at the handshake, in interpreter mode
+
+With `spritzerExec=interpreter` (or spritzer `0.5.0`) and fountain `v0.9.0` or
+later, a turn is dispatched into the sandbox and then fails.
 
 fountain speaks the [Agent Client Protocol](https://agentclientprotocol.com/)
 to its runtimes from `v0.9.0`
@@ -116,15 +148,15 @@ out is the part that stopped working when the protocol changed.
 
 ## What it will never prove
 
-Even once that endpoint lands, three things are absent and no configuration
-brings them back:
+Container mode runs real commands, so real tool execution is back. Two things
+are still absent:
 
-- **live model reasoning**
-- **real tool execution** in the sandbox
-- **true VM isolation**
+- **live model reasoning**, unless the instance has an inference credential;
+  the fixture is deterministic by design
+- **true VM isolation**: a sprite is a root container on the cluster's nodes,
+  not a Firecracker VM
 
-spritzer answers exec with a scripted interpreter whose default is to echo the
-command back. A green local conversation is a *plumbing* check. It is not
+A green local conversation on the fixture is an end-to-end ACP check. It is not
 somewhere to judge agent behaviour or sandbox security, and single-node Postgres
 is likewise not somewhere to benchmark durability.
 
@@ -167,9 +199,10 @@ streamed anything back. `just verify-conversation` checks the rest:
 export FOUNTAIN_PASSWORD=...                       # not on the command line
 just verify-conversation you@example.com           # plumbing
 just verify-conversation you@example.com strict    # plumbing + a model replied
+just verify-conversation you@example.com fixture   # a completed ACP turn on a spritzer pod
 ```
 
-Both make a throwaway agent, open one conversation, and tear both down on the
+All three make a throwaway agent, open one conversation, and tear both down on the
 way out, including when an assertion fails, which is the case that matters.
 
 **`plumbing`** asserts a sandbox was provisioned, a turn ran, events streamed in
@@ -177,21 +210,24 @@ order, and the turn exited 0. It catches a broken Secret, an unreachable data
 plane, a migration that did not run.
 
 **`strict`** additionally asserts a model replied, and refuses to run against
-`dataPlane=spritzer`:
+spritzer's interpreter, which satisfies every plumbing assertion with no model
+in the loop at all. Container mode runs the real runtime, so `strict` is
+allowed there and needs an inference credential to pass.
+
+**`fixture`** needs spritzer in container mode and the account named by
+`acpFixtureUserId`. It makes a persistent agent on `fountain-fixture`, sends
+the fixture's `write` scenario with a fresh nonce, and asserts the turn ended
+`end_turn`, the fixture reported the write, and a `sprite-*` pod holds the file:
 
 ```
-  ✗ strict needs a real data plane. This deployment runs the emulator,
-    which echoes the runtime command back instead of calling a model,
-    so a green run here would prove nothing about a reply.
+  data plane: spritzer (container)
+  ✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-1f627f19-61bdcacd,
+    and its artifact reads back from the pod. ACP end to end, no model.
 ```
 
-The emulator satisfies every plumbing assertion with no model in the loop at
-all, so a gate that cannot tell those apart is worse than no gate. This one
-fails closed.
-
-Against the local default, `plumbing` passes: the turn completes and the prompt
-comes back. An orphaned turn or a `:command_exited` fails the build now — both
-were outcomes once and are regressions today.
+On the local default, `plumbing` fails without an inference credential,
+because the `claude` runtime stops at model selection. That is the honest
+answer for a runtime with no model; `fixture` is the local gate.
 
 ## For real conversations
 

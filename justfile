@@ -44,9 +44,31 @@ default:
 
 # Stand up everything, from nothing, and prove it serves.
 [doc("Stand up everything, from nothing, and prove it serves.")]
-up: cluster-up secret build apply wait storage-init verify
-    @echo ""
-    @echo "fountain is up. Reach it with:  just forward   →  http://localhost:4000"
+up: cluster-up secret build apply wait storage-init verify announce
+
+# Say where fountain is and which data plane it provisions sandboxes on.
+#
+# Read off the live Deployment's annotations rather than from `params`: the
+# parameter says what was built, the annotation says what is running, and the
+# two differ exactly when someone applied by hand in between. Studio and
+# anything else scripting `just up` wants these two facts, and both used to be
+# a guess — the URL was printed as a constant and the data plane not at all.
+[doc("Print the fountain URL and the data plane in use, from the live Deployment.")]
+announce: _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dep="$(kubectl get deploy fountain -n "{{ns}}" -o json)"
+    ann() { printf '%s' "$dep" | jq -r --arg k "fountain-ops/$1" '.metadata.annotations[$k] // empty'; }
+    plane="$(ann data-plane)"; endpoint="$(ann sprites-base-url)"
+    url="$(printf '%s' "$dep" | jq -r '.spec.template.spec.containers[0].env[] | select(.name == "PUBLIC_URL") | .value')"
+    echo ""
+    echo "  fountain    ${url:-http://localhost:4000}   (reach it with: just forward)"
+    echo "  data plane  ${plane:-unknown} -> ${endpoint:-unknown}"
+    case "$plane" in
+      spritzer) echo "              the in-cluster emulator: turns stop at the ACP handshake (#91)" ;;
+      wisp)     echo "              token from Secret $(ann sprites-token-secret), key SPRITES_TOKEN" ;;
+    esac
+    echo "  next        just register you@example.com   (an API key for chant's fountain profile)"
 
 # Remove everything this created, and nothing it did not.
 [doc("Remove everything this created, and nothing it did not.")]
@@ -421,8 +443,63 @@ typecheck:
 check: typecheck lint test build
 
 [doc("Build, then apply the manifests to the cluster.")]
-apply: build _require-cluster
+apply: build _require-cluster _data-plane-preflight
     kubectl apply -f dist/fountain.yaml
+
+# Refuse to apply a wisp data plane whose token Secret does not exist.
+#
+# Without it the app pod sits in CreateContainerConfigError, `just wait` burns
+# its five minutes, and the message that finally surfaces is a rollout timeout.
+# The Secret is the one input the operator has to bring, so its absence is
+# named here, before anything is applied, with the command that fixes it.
+_data-plane-preflight:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    plane="$(sed -n 's/^ *fountain-ops\/data-plane: *//p' dist/fountain.yaml | head -1)"
+    [ "$plane" = "wisp" ] || exit 0
+    tokenSecret="$(sed -n 's/^ *fountain-ops\/sprites-token-secret: *//p' dist/fountain.yaml | head -1)"
+    endpoint="$(sed -n 's/^ *fountain-ops\/sprites-base-url: *//p' dist/fountain.yaml | head -1)"
+    if kubectl get secret "$tokenSecret" -n "{{ns}}" -o jsonpath='{.data.SPRITES_TOKEN}' 2>/dev/null | grep -q .; then
+      echo "  ✓ dataPlane=wisp at $endpoint, token from Secret $tokenSecret"
+      exit 0
+    fi
+    echo "  ✗ dataPlane=wisp needs the endpoint's token in Secret $tokenSecret (key SPRITES_TOKEN)," >&2
+    echo "    and there is none in namespace {{ns}}." >&2
+    echo "" >&2
+    echo "    just params=\"{{params}}\" sprites-token      (prompts; or set SPRITES_TOKEN)" >&2
+    exit 2
+
+# Put a Sprites-compatible endpoint's bearer token where dataPlane=wisp reads it.
+#
+# The Secret's name comes from the same build parameters as everything else
+# (spritesTokenSecret, default fountain-sprites-token), so pass the same
+# `params` you pass to `up`. The token is read from $SPRITES_TOKEN or prompted
+# for without echo, never taken as an argument, so it stays out of shell
+# history and `ps`. Re-running replaces it, which is how a token is rotated;
+# the app picks the new value up on its next restart.
+[doc("Store the wisp endpoint's token in its Secret. Reads $SPRITES_TOKEN or prompts.")]
+sprites-token: _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name="$(npx chant build src --format yaml {{params}} 2>/dev/null | sed -n 's/^ *fountain-ops\/sprites-token-secret: *//p' | head -1)"
+    if [ -z "$name" ]; then
+      echo "  ✗ these params do not build dataPlane=wisp, so no token Secret is read." >&2
+      echo "    just params=\"--param dataPlane=wisp --param spritesBaseUrl=https://wisp.widgets.wtf\" sprites-token" >&2
+      exit 2
+    fi
+    token="${SPRITES_TOKEN:-}"
+    if [ -z "$token" ]; then
+      printf '  token for the Sprites endpoint (not echoed): ' >&2; read -rs token; echo >&2
+    fi
+    [ -n "$token" ] || { echo "  ✗ empty token" >&2; exit 1; }
+    kubectl create namespace "{{ns}}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    printf '%s' "$token" | kubectl create secret generic "$name" -n "{{ns}}" \
+      --from-file=SPRITES_TOKEN=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    echo "  ✓ Secret $name holds SPRITES_TOKEN"
+    if kubectl get deploy fountain -n "{{ns}}" >/dev/null 2>&1; then
+      kubectl rollout restart deploy/fountain -n "{{ns}}" >/dev/null
+      echo "  ✓ fountain restarted to read it"
+    fi
 
 # Wait for both rollouts. Fountain migrates at boot, so give it room.
 [doc("Wait for both rollouts. Fountain migrates at boot, so give it room.")]
@@ -559,6 +636,19 @@ e2e:
     just promote-admin "$email" | grep -qE "is an admin|already an admin" \
       || fail "the account was not admin after promote-admin — neither the in-app bootstrap nor the release task granted it"
     echo "  ✓ $email is admin, audit-recorded"
+
+    # What studio and chant's fountain profile consume: an endpoint and a key.
+    # Against the account above, so the "already has an account" path is the
+    # one exercised, and the recipe itself refuses to print a key that
+    # GET /api/agents does not accept.
+    step "register hands back a key chant can use"
+    exports="$(FOUNTAIN_PASSWORD="$pass" just register "$email" 2>/dev/null)" \
+      || fail "just register did not hand back a working key"
+    printf '%s\n' "$exports" | grep -q '^export FOUNTAIN_ENDPOINT=http://localhost:4000$' \
+      || fail "just register printed no FOUNTAIN_ENDPOINT, or the wrong one"
+    printf '%s\n' "$exports" | grep -qE '^export FOUNTAIN_TOKEN=.+' \
+      || fail "just register printed no FOUNTAIN_TOKEN"
+    echo "  ✓ FOUNTAIN_ENDPOINT and FOUNTAIN_TOKEN, and the key authenticates"
 
     # The conversation gate asserts the plumbing that is OURS and observes
     # the rest.
@@ -1035,6 +1125,102 @@ promote-admin EMAIL: _require-cluster
     echo "  ✗ could not promote $EMAIL (kubectl exit $rc)" >&2
     exit 1
 
+# Register an account (or reuse it) and hand back an API key for chant.
+#
+# The API half of what waterpark's compose/bin/register.sh does: register over
+# POST /api/auth/register, carry on if the address is already taken, mint a key
+# at POST /api/auth/token, and prove the key authenticates before printing it.
+# No CLI credentials file and no .env are written; the key goes to stdout as
+# shell exports and nowhere else, so
+#
+#   eval "$(just register you@example.com)"
+#
+# leaves FOUNTAIN_ENDPOINT and FOUNTAIN_TOKEN set, which are what chant's
+# fountain lexicon falls back to when no profile names them. The profile block
+# for chant.config.ts goes to stderr alongside.
+#
+# The endpoint is the instance's PUBLIC_URL, read off the live Deployment.
+# On k3d that is http://localhost:4000, which answers while `just forward` is
+# running; this recipe holds its own port-forward for its own calls.
+#
+# Password from $FOUNTAIN_PASSWORD, or prompted without echo. Accounts
+# self-verify at registration with emailDelivery=none (fountain ADR 0011); with
+# a real mail provider, verify first or run `just verify-email`.
+[doc("Register (or reuse) an account and print FOUNTAIN_ENDPOINT/FOUNTAIN_TOKEN exports for chant.")]
+register EMAIL PROFILE="local": _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+    EMAIL="{{EMAIL}}"
+    if ! printf '%s' "$EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+      echo "  ✗ not an email address: $EMAIL" >&2; exit 2
+    fi
+    pass="${FOUNTAIN_PASSWORD:-}"
+    if [ -z "$pass" ]; then
+      printf '  password for %s (at least 8 characters, not echoed): ' "$EMAIL" >&2; read -rs pass; echo >&2
+    fi
+    [ -n "$pass" ] || { echo "  ✗ empty password" >&2; exit 1; }
+
+    endpoint="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -r '.spec.template.spec.containers[0].env[] | select(.name == "PUBLIC_URL") | .value')"
+    endpoint="${endpoint:-http://localhost:4000}"
+
+    kubectl port-forward -n "{{ns}}" svc/fountain 14001:80 >/dev/null 2>&1 &
+    pf=$!
+    # Disowned so killing it on exit does not print bash's job notice.
+    disown "$pf"
+    body="$(mktemp -t fountain-register-XXXX)"
+    trap 'kill $pf 2>/dev/null || true; rm -f "$body"' EXIT
+    base=http://localhost:14001
+    for _ in $(seq 1 30); do curl -fs -o /dev/null -m 2 "$base/health" && break || sleep 1; done
+    curl -fs -o /dev/null -m 5 "$base/health" || { echo "  ✗ fountain is not answering through the port-forward" >&2; exit 1; }
+
+    # jq builds the JSON so a password with a quote or backslash in it is sent
+    # as typed rather than breaking the request.
+    creds="$(jq -nc --arg e "$EMAIL" --arg p "$pass" '{email: $e, password: $p}')"
+    code="$(curl -s -o "$body" -w '%{http_code}' -X POST "$base/api/auth/register" \
+      -H 'content-type: application/json' -d "$creds")"
+    # 422 means both "address taken" and "password refused", so the body
+    # decides. Only the first is safe to carry on from.
+    case "$code" in
+      2*)  echo "  ✓ registered $EMAIL" >&2 ;;
+      409) echo "  · $EMAIL already has an account, using it" >&2 ;;
+      422)
+        if grep -q "already been taken" "$body"; then
+          echo "  · $EMAIL already has an account, using it" >&2
+        else
+          echo "  ✗ registration refused: $(cat "$body")" >&2; exit 1
+        fi ;;
+      403) echo "  ✗ registration is closed on this instance (registrationEnabled=false)" >&2; exit 1 ;;
+      *)   echo "  ✗ registration answered $code: $(cat "$body")" >&2; exit 1 ;;
+    esac
+
+    key="$(curl -s -X POST "$base/api/auth/token" -H 'content-type: application/json' -d "$creds" | jq -r '.api_key // empty' 2>/dev/null || true)"
+    if [ -z "$key" ]; then
+      echo "  ✗ no API key for $EMAIL: a wrong password, or the account is not verified" >&2
+      echo "    (just verify-email $EMAIL, when emailDelivery is not none)" >&2
+      exit 1
+    fi
+    # A key that does not authenticate is worse than no key: it would fail at
+    # chant's first call, far from here.
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$base/api/agents" -H "authorization: Bearer $key")"
+    [ "$code" = "200" ] || { echo "  ✗ the minted key was refused by GET /api/agents ($code)" >&2; exit 1; }
+    echo "  ✓ API key minted and accepted by GET /api/agents" >&2
+
+    echo "export FOUNTAIN_ENDPOINT=$endpoint"
+    echo "export FOUNTAIN_TOKEN=$key"
+    cat >&2 <<PROFILE
+
+      Or name it as a chant profile, in the consuming project's chant.config.ts:
+
+        fountain: {
+          profiles: {
+            {{PROFILE}}: { endpoint: "$endpoint", token: { env: "FOUNTAIN_TOKEN" } },
+          },
+          defaultProfile: "{{PROFILE}}",
+        },
+
+      $endpoint answers while \`just forward\` is running.
+    PROFILE
+
 # ── the conversation gate ──────────────────────────────────────────────────
 
 # Prove a conversation runs: throwaway agent, one prompt, stream, tear down.
@@ -1079,16 +1265,23 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     # name in it. A jsonpath filter — env[?(@.name=="SPRITES_BASE_URL")] — is
     # the obvious way to write this and bash 3.2, which is what macOS ships,
     # mis-parses the `?(` inside `$( )` and silently leaves the variable unset.
-    plane=sprites
-    envValues="$(kubectl get deploy fountain -n "{{ns}}" -o jsonpath='{.spec.template.spec.containers[0].env[*].value}' 2>/dev/null || true)"
-    case "$envValues" in *fountain-spritzer*) plane=spritzer ;; esac
+    #
+    # The Deployment says so in an annotation now (src/app/deployment.ts). The
+    # env scan stays as the fallback for a Deployment applied before it did.
+    plane="$(kubectl get deploy fountain -n "{{ns}}" -o json 2>/dev/null | jq -r '.metadata.annotations["fountain-ops/data-plane"] // empty' || true)"
+    if [ -z "$plane" ]; then
+      plane=sprites
+      envValues="$(kubectl get deploy fountain -n "{{ns}}" -o jsonpath='{.spec.template.spec.containers[0].env[*].value}' 2>/dev/null || true)"
+      case "$envValues" in *fountain-spritzer*) plane=spritzer ;; esac
+    fi
     echo "  data plane: $plane"
 
     if [ "{{MODE}}" = "strict" ] && [ "$plane" = "spritzer" ]; then
       echo "  ✗ strict needs a real data plane. This deployment runs the emulator," >&2
       echo "    which echoes the runtime command back instead of calling a model," >&2
       echo "    so a green run here would prove nothing about a reply." >&2
-      echo "    Redeploy with --param dataPlane=sprites and a real SPRITES_TOKEN." >&2
+      echo "    Redeploy with --param dataPlane=sprites and a real SPRITES_TOKEN, or" >&2
+      echo "    --param dataPlane=wisp --param spritesBaseUrl=<endpoint> and just sprites-token." >&2
       exit 1
     fi
 

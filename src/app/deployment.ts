@@ -1,5 +1,5 @@
 import { Deployment, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, cnpgImage, labels } from "../params";
+import { namespace, image, publicUrl, hostname, httpsPublicUrl, tier, size, seams, databaseSsl, secretName, emailDelivery, otelTraces, registrationEnabled, firstUserAdmin, pgImage, cnpgImage, labels, spritesBaseUrl, spritesTokenSecret } from "../params";
 import { spritzerBaseUrl } from "../data/spritzer";
 
 /**
@@ -52,10 +52,43 @@ const clusteringEnv = tier.clustered
     ]
   : [];
 
-// Only set when the emulator is the data plane. Left unset the Sprites client
-// falls back to its own default, so absent means "the real API" without this
-// file having to name it.
-const spritzerEnv = spritzerBaseUrl ? [{ name: "SPRITES_BASE_URL", value: spritzerBaseUrl }] : [];
+// Only set when something other than Fly is the data plane: the emulator in
+// this namespace, or a wisp endpoint. Left unset the Sprites client falls back
+// to its own default, so absent means "the real API" without this file having
+// to name it.
+//
+// For wisp the token comes with it, from its own Secret. An explicit `env`
+// entry wins over the same name arriving through `envFrom`, so the platform
+// Secret's SPRITES_TOKEN (a placeholder on k3d) is overridden rather than
+// having to be rewritten.
+const dataPlaneEnv = spritzerBaseUrl
+  ? [{ name: "SPRITES_BASE_URL", value: spritzerBaseUrl }]
+  : spritesBaseUrl
+    ? [
+        { name: "SPRITES_BASE_URL", value: spritesBaseUrl },
+        { name: "SPRITES_TOKEN", valueFrom: { secretKeyRef: { name: spritesTokenSecret, key: "SPRITES_TOKEN" } } },
+      ]
+    : [];
+
+/**
+ * What the data plane is, said on the Deployment itself.
+ *
+ * The recipes that need to know — `just up`'s closing line, `apply`'s check
+ * that a wisp token Secret exists, `verify-conversation`'s choice of what to
+ * hold a turn to — read these rather than guessing from env values. They used
+ * to look for the emulator's service name among the env values, which says
+ * nothing about which of two external endpoints is in use.
+ */
+const dataPlaneAnnotations: Record<string, string> = spritesBaseUrl
+  ? {
+      "fountain-ops/data-plane": seams.dataPlane,
+      "fountain-ops/sprites-base-url": spritesBaseUrl,
+      "fountain-ops/sprites-token-secret": spritesTokenSecret,
+    }
+  : {
+      "fountain-ops/data-plane": seams.dataPlane,
+      "fountain-ops/sprites-base-url": spritzerBaseUrl ?? "https://api.sprites.dev",
+    };
 
 const clusteringPorts = tier.clustered
   ? [
@@ -154,7 +187,7 @@ exit 1`,
     : [];
 
 export const deployment = new Deployment({
-  metadata: { name: "fountain", namespace, labels },
+  metadata: { name: "fountain", namespace, labels, annotations: dataPlaneAnnotations },
   spec: {
     replicas: tier.replicas,
     strategy: { type: "RollingUpdate", rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } },
@@ -208,9 +241,10 @@ export const deployment = new Deployment({
               ...clusteringEnv,
               // The whole data plane seam, on the app's side. Unset, the client
               // defaults to https://api.sprites.dev; set, it talks to the
-              // emulator in this namespace. Nothing else about the app changes,
-              // which is what makes the local path exercise the real one.
-              ...spritzerEnv,
+              // emulator in this namespace or to a wisp host. Nothing else
+              // about the app changes, which is what makes the local path
+              // exercise the real one.
+              ...dataPlaneEnv,
             ],
             // Everything secret-shaped comes from the Secret, whoever made it.
             envFrom: [{ secretRef: { name: secretName } }],

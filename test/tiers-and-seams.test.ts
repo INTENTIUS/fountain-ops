@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { resolveTier, sizeShape, defaultSize } from "../src/lib/tiers";
-import { resolveSeams, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
+import { resolveSeams, resolveSpritesBaseUrl, assertSixFieldSchedule, type Seams } from "../src/lib/seams";
 import { tierShape } from "../src/lib/tiers";
 import { targetShape } from "../src/lib/targets";
 
@@ -177,6 +177,43 @@ describe("the data plane seam", () => {
 
   test("the real API is fine at ha", () => {
     expect(() => resolveSeams({ ...base, dataPlane: "sprites" }, {}, true)).not.toThrow();
+  });
+});
+
+describe("dataPlane=wisp", () => {
+  const wisp = { ...base, dataPlane: "wisp" } as Seams;
+
+  test("is accepted on the laptop target and at ha", () => {
+    // An external endpoint holds no state in this cluster, so neither the
+    // laptop tier nor ha has anything to refuse about it.
+    expect(resolveSeams(targetShape("k3d").seams, { dataPlane: "wisp" }).dataPlane).toBe("wisp");
+    expect(() => resolveSeams(wisp, {}, true)).not.toThrow();
+  });
+
+  test("the endpoint comes back as given, minus a trailing slash", () => {
+    // The client appends paths to the base, so `…wtf/` would become `//v1/…`.
+    expect(resolveSpritesBaseUrl(wisp, "https://wisp.widgets.wtf")).toBe("https://wisp.widgets.wtf");
+    expect(resolveSpritesBaseUrl(wisp, "https://wisp.widgets.wtf/")).toBe("https://wisp.widgets.wtf");
+    expect(resolveSpritesBaseUrl(wisp, "http://10.0.0.7:8080")).toBe("http://10.0.0.7:8080");
+  });
+
+  test("with no endpoint is refused, because fountain would fall back to Fly", () => {
+    expect(() => resolveSpritesBaseUrl(wisp, undefined)).toThrow(/needs spritesBaseUrl/);
+    expect(() => resolveSpritesBaseUrl(wisp, "  ")).toThrow(/api\.sprites\.dev/);
+  });
+
+  test("an endpoint on any other data plane is refused, not ignored", () => {
+    expect(() => resolveSpritesBaseUrl({ ...base, dataPlane: "sprites" }, "https://wisp.widgets.wtf")).toThrow(/only read with dataPlane="wisp"/);
+    expect(() => resolveSpritesBaseUrl({ ...base, dataPlane: "spritzer" }, "https://wisp.widgets.wtf")).toThrow(/emulator/);
+    expect(resolveSpritesBaseUrl({ ...base, dataPlane: "sprites" }, undefined)).toBeUndefined();
+  });
+
+  test("an endpoint that is not a plain http(s) base URL is refused", () => {
+    expect(() => resolveSpritesBaseUrl(wisp, "wisp.widgets.wtf")).toThrow(/not a URL/);
+    expect(() => resolveSpritesBaseUrl(wisp, "ftp://wisp.widgets.wtf")).toThrow(/http or https/);
+    // A token in the URL would land in the pod spec in plain text.
+    expect(() => resolveSpritesBaseUrl(wisp, "https://tok@wisp.widgets.wtf")).toThrow(/Secret/);
+    expect(() => resolveSpritesBaseUrl(wisp, "https://wisp.widgets.wtf?token=x")).toThrow(/query/);
   });
 });
 

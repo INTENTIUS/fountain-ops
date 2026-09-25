@@ -50,7 +50,7 @@ implementation detail and are not listed here.
 | target | what it does |
 |---|---|
 | `doctor` | Reports whether `docker`, `k3d`, `kubectl`, `node`, `npm` and `jq` are present, whether the Docker daemon is running, and how to install anything missing on this platform. `sops` and `age` are reported but never required — they are only needed for `secrets=sops`. Exits non-zero if a required tool is absent |
-| `up` | Runs `cluster-up`, `secret`, `build`, `apply`, `wait`, `storage-init` and `verify`, in that order. Safe to re-run: it will not create a second cluster and will not mint a second secret over the first. See [Stand it up locally](/fountain-ops/getting-started/stand-it-up/) |
+| `up` | Runs `cluster-up`, `secret`, `build`, `apply`, `wait`, `storage-init`, `verify` and `announce`, in that order. Safe to re-run: it will not create a second cluster and will not mint a second secret over the first. See [Stand it up locally](/fountain-ops/getting-started/stand-it-up/) |
 | `down` | Deletes the k3d cluster, which is everything this created and nothing it did not |
 | `cluster-up` | Creates the `fountain-local` k3d cluster if it does not exist — from the declaration in `cluster/local.ts`, built to a SimpleConfig that `k3d cluster create --config` consumes — switches `kubectl` to its context (the declaration itself never touches the ambient context), then polls `/readyz` for up to two minutes. Idempotent |
 | `cluster-down` | Deletes the k3d cluster. What `down` delegates to |
@@ -73,6 +73,8 @@ holds data you want back.
 | target | what it does |
 |---|---|
 | `forward` | Holds `kubectl port-forward` open on `svc/fountain`, so the app answers on `http://localhost:4000` until you interrupt it |
+| `announce` | Prints the instance's `PUBLIC_URL` and the data plane it provisions on, with the endpoint, read off the live Deployment's `fountain-ops/*` annotations. The last step of `up` |
+| `sprites-token` | Stores a Sprites-compatible endpoint's bearer token in the Secret `dataPlane=wisp` reads (`spritesTokenSecret`), from `$SPRITES_TOKEN` or a prompt that does not echo, then restarts the app if it is running. Pass the same `params` as `up`; refuses when they do not build `dataPlane=wisp` |
 | `status` | `kubectl get all,pvc,cronjob` in the `fountain` namespace |
 | `logs` | The app's last 100 log lines, following |
 | `pg-logs` | The bundled database's last 50 log lines, not following. Only exists at `postgres=bundled` — `cnpg` and `reference` put Postgres somewhere this does not look |
@@ -87,6 +89,7 @@ full story is in
 
 | target | what it does |
 |---|---|
+| `register EMAIL [PROFILE]` | Registers the account over the API, or reuses it if the address is taken, mints an API key, checks `GET /api/agents` accepts it, and prints `export FOUNTAIN_ENDPOINT=…` and `export FOUNTAIN_TOKEN=…` on stdout, so `eval "$(just register you@example.com)"` sets what chant's fountain lexicon falls back to. A `fountain.profiles` block named `PROFILE` (default `local`) goes to stderr. Password from `$FOUNTAIN_PASSWORD` or a prompt. The endpoint is `PUBLIC_URL`, which on k3d answers while `just forward` runs |
 | `verify-email EMAIL` | Marks a registered account's email verified without any mail. An escape hatch since fountain ADR 0011 (accounts self-verify at registration under `emailDelivery=none`): needed only on pins ≤ v0.4.0 — where skipping it bounced every authenticated page back to the login form with nothing on screen saying why — or when a real mail provider is broken |
 | `promote-admin EMAIL` | Grants an account the admin role, audit-recorded as `admin.role.granted`. The manual path: with the default `firstUserAdmin=true` the first verified account is promoted in-app (fountain ADR 0011) and this reports it already admin. Already-an-admin is success. There is no revoke target — that is done from the panel, by an admin |
 

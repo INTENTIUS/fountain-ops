@@ -48,6 +48,7 @@ getting this row wrong, and it is now four times.
 | `monitoring=prometheus-operator` | Builds only. Emitted nothing at all until the `tier.metrics` fix |
 | `tls=cert-manager` (issuance) | cert-manager installs and is Available, but no certificate has been issued, because a local cluster has no domain to issue against |
 | `ingress=traefik`, `secrets=infisical`, `monitoring=prometheus-operator` | Build, and a real API server accepts the output. No controller has reconciled any of them: Traefik ships with k3s but nothing routes through it here, Infisical needs a server to talk to, and kube-prometheus-stack is not installed ([#22](https://github.com/INTENTIUS/fountain-ops/issues/22)) |
+| `dataPlane=wisp` | Wired, and exercised against a spritzer standing in for a wisp host: `SPRITES_BASE_URL` and the token Secret reach the app, a sandbox is provisioned through the endpoint, and the gate holds the turn to exit 0. Never run against a real wisp host ([#121](https://github.com/INTENTIUS/fountain-ops/issues/121)) |
 | `ops/` | One Op: `fountain-apply`. behold discovers it and offers Run. The other eleven verbs in [#3](https://github.com/INTENTIUS/fountain-ops/issues/3) do not exist |
 
 ## Why the table reads like this

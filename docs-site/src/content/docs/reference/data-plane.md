@@ -225,8 +225,8 @@ and a `sprite-*` pod holds the file:
 
 ```
   data plane: spritzer (container)
+  ✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)
   ✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-1f627f19-61bdcacd,
-    under a limited environment (empty allowlist, not enforced by spritzer),
     and its artifact reads back from the pod. ACP end to end, no model.
 ```
 

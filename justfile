@@ -1344,6 +1344,7 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     if [ "{{MODE}}" = "fixture" ]; then
       printf '%s' "$ev" | grep '"stage":"network"' | grep -q '"state":"done"' \
         || fail "the network stage did not finish on the limited environment — spritzer#26 is open again"
+      echo "  ✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)"
       printf '%s' "$ev" | grep -q '"stage":"turn"' || fail "no turn stage — nothing ran in the sandbox"
       printf '%s' "$ev" | grep -qF 'stop_reason\":\"end_turn' \
         || fail "the turn did not end with end_turn"
@@ -1358,7 +1359,6 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
       done
       [ -n "$found" ] || fail "no sprite pod holds the artifact the turn reported writing"
       echo "  ✓ fixture: a turn completed (end_turn) on spritzer pod $found,"
-      echo "    under a limited environment (empty allowlist, not enforced by spritzer),"
       echo "    and its artifact reads back from the pod. ACP end to end, no model."
       exit 0
     fi

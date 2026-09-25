@@ -36,9 +36,11 @@ anything written in the present tense anywhere else, this file included.
   stops at model selection without an inference credential; that is expected,
   not a regression. `spritzerExec=interpreter` still stops at the ACP
   handshake (#91).
-- `networking_type: limited` fails provisioning on spritzer 0.6.0: fountain
-  rejects spritzer's answer to the network policy call. Use `unrestricted`
-  locally until spritzer and fountain agree.
+- `networking_type: limited` provisions from spritzer 0.6.1, which answers the
+  network policy call with `204` as Sprites does (0.6.0 answered `200`, and
+  fountain refused it: spritzer#26). spritzer stores the policy but does not
+  enforce it, so a limited sandbox can still reach anything locally. `just e2e`
+  runs its fixture turn on a limited Environment with an empty allowlist.
 
 ## Things that will waste your time if edited directly
 

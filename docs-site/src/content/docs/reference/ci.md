@@ -76,6 +76,7 @@ credential. The gate enables the fixture for the account it just registered
 
 ```
 ✓ fixture: a turn completed (end_turn) on spritzer pod sprite-fountain-…,
+  under a limited environment (empty allowlist, not enforced by spritzer),
   and its artifact reads back from the pod. ACP end to end, no model.
 ```
 

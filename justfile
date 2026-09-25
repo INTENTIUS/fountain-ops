@@ -1277,10 +1277,11 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     # Everything below is a throwaway. The trap is what makes that true even
     # when an assertion fails — losing the port-forward is fine, leaving an
     # agent and a live sandbox behind is not.
-    conv=""; agent=""
+    conv=""; agent=""; envId=""
     cleanup() {
       [ -n "$conv" ]  && curl -s -o /dev/null -X POST "$base/api/conversations/$conv/terminate" -H "authorization: Bearer ${key:-}" || true
       [ -n "$agent" ] && curl -s -o /dev/null -X DELETE "$base/api/agents/$agent" -H "authorization: Bearer ${key:-}" || true
+      [ -n "$envId" ] && curl -s -o /dev/null -X DELETE "$base/api/environments/$envId" -H "authorization: Bearer ${key:-}" || true
       kill $pf 2>/dev/null || true
     }
     trap cleanup EXIT
@@ -1299,8 +1300,19 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     # agent is persistent (fountain ADR 0023), the mode a studio box runs in,
     # so its conversation ends `idle` rather than terminal and the sprite pod
     # outlives the turn.
+    #
+    # The agent runs on a `networking_type: limited` Environment with an empty
+    # allowlist, which is what a studio Box declares by default (chant#2706).
+    # spritzer 0.6.0 answered the network policy call with 200 and the rules,
+    # where Sprites answers 204, and fountain failed the network stage on it
+    # (spritzer#26). spritzer stores the policy and does not enforce it, so
+    # this proves the call round-trips, not that egress is limited.
     if [ "{{MODE}}" = "fixture" ]; then
-      agentBody='{"name":"verify-fixture","model":"fixture/deterministic-v1","runtime":"fountain-fixture","sandbox_mode":"persistent"}'
+      envBody="$(jq -nc --arg n "verify-fixture-limited-$(date +%s)" '{name: $n, networking_type: "limited", networking_config: {allowed_hosts: []}}')"
+      envCreated="$(curl -s -X POST "$base/api/environments" -H "authorization: Bearer $key" -H 'content-type: application/json' -d "$envBody")"
+      envId="$(printf '%s' "$envCreated" | jq -r '.data.id // .id // empty' 2>/dev/null || true)"
+      [ -n "$envId" ] || { echo "  ✗ could not create the limited environment: $envCreated" >&2; exit 1; }
+      agentBody="$(jq -nc --arg e "$envId" '{name: "verify-fixture", model: "fixture/deterministic-v1", runtime: "fountain-fixture", sandbox_mode: "persistent", environment_id: $e}')"
       nonce="$( (uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid) | tr 'A-F' 'a-f')"
       prompt="$(jq -nc --arg n "$nonce" '{fixture: "fountain-acp-fixture/1", scenario: "write", nonce: $n}')"
     else
@@ -1330,6 +1342,8 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     printf '%s' "$ev" | grep -q '"stage":"provision"' || fail "no provision stage — no sandbox was requested"
 
     if [ "{{MODE}}" = "fixture" ]; then
+      printf '%s' "$ev" | grep '"stage":"network"' | grep -q '"state":"done"' \
+        || fail "the network stage did not finish on the limited environment — spritzer#26 is open again"
       printf '%s' "$ev" | grep -q '"stage":"turn"' || fail "no turn stage — nothing ran in the sandbox"
       printf '%s' "$ev" | grep -qF 'stop_reason\":\"end_turn' \
         || fail "the turn did not end with end_turn"
@@ -1344,6 +1358,7 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
       done
       [ -n "$found" ] || fail "no sprite pod holds the artifact the turn reported writing"
       echo "  ✓ fixture: a turn completed (end_turn) on spritzer pod $found,"
+      echo "    under a limited environment (empty allowlist, not enforced by spritzer),"
       echo "    and its artifact reads back from the pod. ACP end to end, no model."
       exit 0
     fi

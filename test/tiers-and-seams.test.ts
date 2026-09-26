@@ -228,9 +228,15 @@ describe("acpFixtureUserId", () => {
     expect(assertAcpFixtureUserId({ ...base, dataPlane: "spritzer" }, id)).toBe(id);
   });
 
-  test("is refused on any real data plane, because it bypasses inference credentials", () => {
+  test("a user id on a wisp endpoint enables it from a laptop's fountain (target k3d)", () => {
+    expect(assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id)).toBe(id);
+    expect(assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id, "k3d")).toBe(id);
+  });
+
+  test("is refused where tenants are served, because it bypasses inference credentials", () => {
     expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "sprites" }, id)).toThrow(/only accepted with dataPlane="spritzer"/);
-    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id)).toThrow(/bypasses inference credentials/);
+    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id, "kubernetes")).toThrow(/bypasses inference credentials/);
+    expect(() => assertAcpFixtureUserId({ ...base, dataPlane: "wisp" }, id, "kubernetes")).toThrow(/target="k3d"/);
   });
 
   test("something that is not a UUID is refused, since fountain would ignore it", () => {

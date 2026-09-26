@@ -277,21 +277,34 @@ export function resolveSpritesBaseUrl(s: Seams, spritesBaseUrl?: string): string
 }
 
 /**
- * The ACP fixture account, checked: a UUID, and only on the emulated plane.
+ * The ACP fixture account, checked: a UUID, and only where no real tenant is
+ * served.
  *
  * fountain enables its fixture runtime for exactly one user id, and a value
  * that is not a UUID is silently treated as "no fixture" upstream, so a typo
  * would surface as a 422 on agent create far from the parameter. And the
  * fixture skips inference credentials entirely, which is fine on a laptop's
- * emulator and wrong anywhere real tenants are served.
+ * fountain and wrong anywhere real tenants are served.
+ *
+ * So it is accepted on the emulated plane, and on a wisp endpoint only from a
+ * fountain on target="k3d": a laptop's own fountain with its sandboxes on
+ * somebody's wisp host. That is how a completed turn on a real wisp sprite is
+ * shown without an inference credential (#121). A fountain on a real cluster
+ * serves tenants, so there it stays refused, as it is on Fly's Sprites.
  */
-export function assertAcpFixtureUserId(s: Seams, userId?: string): string | undefined {
+export function assertAcpFixtureUserId(s: Seams, userId?: string, target = "k3d"): string | undefined {
   const id = userId?.trim() || undefined;
   if (!id) return undefined;
-  if (s.dataPlane !== "spritzer") {
+  if (s.dataPlane === "wisp" && target !== "k3d") {
     throw new Error(
       `acpFixtureUserId turns on fountain's deterministic ACP fixture, which bypasses inference credentials — ` +
-        `it is only accepted with dataPlane="spritzer", not "${s.dataPlane}".`,
+        `with dataPlane="wisp" it is only accepted from a laptop's fountain (target="k3d"), not target="${target}".`,
+    );
+  }
+  if (s.dataPlane !== "spritzer" && s.dataPlane !== "wisp") {
+    throw new Error(
+      `acpFixtureUserId turns on fountain's deterministic ACP fixture, which bypasses inference credentials — ` +
+        `it is only accepted with dataPlane="spritzer", or dataPlane="wisp" on target="k3d", not "${s.dataPlane}".`,
     );
   }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {

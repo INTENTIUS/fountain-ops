@@ -278,18 +278,49 @@ and at apply time, before anything is applied, a missing token Secret:
 
 `verify-conversation` treats `wisp` as a real data plane: the turn has to exit
 0, the emulator's handshake exemption does not apply, and `strict` is allowed.
+`fixture` runs on wisp too, from a laptop's fountain: `acpFixtureUserId` is
+accepted with `dataPlane=wisp` on `target=k3d` and refused on
+`target=kubernetes`, where tenants are served. The fixture's Environment asks
+fountain's `packages` step for apt's `nodejs`, because the fixture is
+`node .fountain-acp-fixture.mjs` and wisp's base image (Ubuntu 24.04) has no
+node. The artifact is read back through the endpoint's filesystem API, with
+the token from its Secret. The persistent sandbox is reset through fountain on
+the way out, which deletes the sprite on the wisp host.
 
-What has been checked, and what has not. On k3d, `dataPlane=wisp` was pointed at
-a second spritzer standing in for a wisp host: the app received the stand-in's
-URL and the token from its Secret (not the platform Secret's placeholder),
-provisioned a sandbox there, dispatched a turn into it, and
-`verify-conversation` then failed the turn for not exiting 0, which is what it
-should say about spritzer 0.5.0 on a plane that gets no exemption. No real wisp
-host has been used from here. Two things only that can show: that wisp accepts
-fountain's calls with a real token, and whether a turn needs the sprite to reach
-fountain back at `PUBLIC_URL`, which from a public wisp host a laptop's
-`http://localhost:4000` is not. The hand check, and its transcript, belong on
-[#121](https://github.com/INTENTIUS/fountain-ops/issues/121).
+### Checked against wisp.widgets.wtf
+
+On 2026-09-25, from k3d on a laptop (fountain `v0.21.0`), with the token in
+the Secret:
+
+```
+P="--param dataPlane=wisp --param spritesBaseUrl=https://wisp.widgets.wtf --param acpFixtureUserId=<id>"
+just params="$P" apply wait
+FOUNTAIN_PASSWORD=... just verify-conversation acceptance@studio.localhost fixture
+
+  data plane: wisp
+  ✓ network: a limited environment's policy was applied (empty allowlist; wisp enforces it)
+  ✓ fixture: a turn completed (end_turn) on wisp sprite fountain-ad406704-89c89b19 at https://wisp.widgets.wtf,
+    and its artifact reads back through wisp's filesystem API. ACP end to end, no model.
+```
+
+A second run with its event stream kept took 8 seconds from the conversation
+to `idle`: `packages` done (apt's nodejs, node 18.19.1), `network` done
+(limited, 0 hosts), `provision` done, `turn` started, `model` selected
+(`fixture/deterministic-v1`), the fixture's write, `turn` done with
+`stop_reason: end_turn`. The file read back through wisp held the nonce. From
+inside the sprite, `https://example.com` was refused, so wisp enforced the
+empty allowlist. Resetting the sandbox deleted the sprite on the host (404).
+
+That answers the two open questions. wisp accepts fountain's calls with a real
+token. A turn does not need the sprite to reach fountain at `PUBLIC_URL`:
+fountain drives the runtime over the exec API, so a laptop fountain at
+`http://localhost:4000` behind a public wisp host completes a turn. A runtime
+that calls fountain's API from inside the sandbox (the `fountain` skill, the
+broker) still would, and that has not been tried from a public host.
+
+The same fountain also made arugula-salad/studio's box on the host
+(arugula-salad/studio#27, `just box fountain-wisp`): a persistent sandbox with
+a public URL, provisioned by the box's setup script.
 
 :::danger[The token is a platform credential]
 `SPRITES_TOKEN` is a **platform** credential, never a tenant one. It must not

@@ -200,7 +200,7 @@ export const flociImage = (params.flociImage as string | undefined) ?? "floci/fl
  * in this repo changing.
  */
 export const spritzerImage =
-  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.6.1";
+  (params.spritzerImage as string | undefined) ?? "ghcr.io/intentius/spritzer:0.6.2";
 
 /**
  * How spritzer runs a sprite's exec. `container` (spritzer 0.6.0,

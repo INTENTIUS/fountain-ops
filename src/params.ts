@@ -224,12 +224,14 @@ export const spritzerSpriteImage =
  * (`DEPLOYED_ACP_FIXTURE_ENABLED` / `_USER_ID`, fountain v0.21.0). The fixture
  * is a real ACP process in the sandbox that needs no model and no inference
  * credential, which is what lets `just e2e` assert a completed turn offline.
- * Refused unless the data plane is the local emulator: it bypasses inference
- * credentials, so it has no business on an instance serving real tenants.
+ * Refused except on the local emulator, or on a wisp endpoint from a laptop's
+ * fountain (target=k3d): it bypasses inference credentials, so it has no
+ * business on an instance serving real tenants.
  */
 export const acpFixtureUserId = assertAcpFixtureUserId(
   seams,
   params.acpFixtureUserId as string | undefined,
+  targetName,
 );
 
 /**

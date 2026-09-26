@@ -1255,9 +1255,9 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     interpreter=0
     if [ "$plane" = "spritzer" ] && [ "$spritzerExec" != "container" ]; then interpreter=1; fi
 
-    if [ "{{MODE}}" = "fixture" ] && { [ "$plane" != "spritzer" ] || [ "$interpreter" = 1 ]; }; then
-      echo "  ✗ fixture runs fountain's ACP fixture on a spritzer pod, so it needs" >&2
-      echo "    dataPlane=spritzer in container mode and --param acpFixtureUserId." >&2
+    if [ "{{MODE}}" = "fixture" ] && { { [ "$plane" != "spritzer" ] && [ "$plane" != "wisp" ]; } || [ "$interpreter" = 1 ]; }; then
+      echo "  ✗ fixture runs fountain's ACP fixture on a sprite that runs real commands, so it needs" >&2
+      echo "    dataPlane=spritzer in container mode, or dataPlane=wisp, and --param acpFixtureUserId." >&2
       exit 2
     fi
 
@@ -1280,6 +1280,15 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     conv=""; agent=""; envId=""
     cleanup() {
       [ -n "$conv" ]  && curl -s -o /dev/null -X POST "$base/api/conversations/$conv/terminate" -H "authorization: Bearer ${key:-}" || true
+      # A persistent agent's sandbox outlives its conversation (persistent_home).
+      # On spritzer it goes with the cluster; on wisp it is a real machine on
+      # somebody's host, so reset it through fountain, which destroys it there.
+      if [ -n "$agent" ]; then
+        for sb in $(curl -s "$base/api/sandboxes" -H "authorization: Bearer ${key:-}" 2>/dev/null \
+            | jq -r --arg a "$agent" '.data[]? | select(.agent_id == $a and .status != "terminated" and .status != "failed") | .id' 2>/dev/null || true); do
+          curl -s -o /dev/null -X DELETE "$base/api/sandboxes/$sb" -H "authorization: Bearer ${key:-}" || true
+        done
+      fi
       [ -n "$agent" ] && curl -s -o /dev/null -X DELETE "$base/api/agents/$agent" -H "authorization: Bearer ${key:-}" || true
       [ -n "$envId" ] && curl -s -o /dev/null -X DELETE "$base/api/environments/$envId" -H "authorization: Bearer ${key:-}" || true
       kill $pf 2>/dev/null || true
@@ -1307,8 +1316,16 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     # where Sprites answers 204, and fountain failed the network stage on it
     # (spritzer#26). spritzer stores the policy and does not enforce it, so
     # this proves the call round-trips, not that egress is limited.
+    #
+    # On wisp the same Environment also asks fountain for apt's nodejs: the
+    # fixture is `node .fountain-acp-fixture.mjs`, and wisp's base image
+    # (Ubuntu 24.04) has no node, where spritzer's sprite image does. fountain
+    # installs packages before it applies the network policy, so the empty
+    # allowlist still holds for the turn, and wisp enforces it.
     if [ "{{MODE}}" = "fixture" ]; then
-      envBody="$(jq -nc --arg n "verify-fixture-limited-$(date +%s)" '{name: $n, networking_type: "limited", networking_config: {allowed_hosts: []}}')"
+      packages='{}'
+      [ "$plane" != "wisp" ] || packages='{"apt":["nodejs"]}'
+      envBody="$(jq -nc --arg n "verify-fixture-limited-$(date +%s)" --argjson p "$packages" '{name: $n, networking_type: "limited", networking_config: {allowed_hosts: []}, packages: $p}')"
       envCreated="$(curl -s -X POST "$base/api/environments" -H "authorization: Bearer $key" -H 'content-type: application/json' -d "$envBody")"
       envId="$(printf '%s' "$envCreated" | jq -r '.data.id // .id // empty' 2>/dev/null || true)"
       [ -n "$envId" ] || { echo "  ✗ could not create the limited environment: $envCreated" >&2; exit 1; }
@@ -1344,14 +1361,38 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
     if [ "{{MODE}}" = "fixture" ]; then
       printf '%s' "$ev" | grep '"stage":"network"' | grep -q '"state":"done"' \
         || fail "the network stage did not finish on the limited environment — spritzer#26 is open again"
-      echo "  ✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)"
+      if [ "$plane" = "wisp" ]; then
+        echo "  ✓ network: a limited environment's policy was applied (empty allowlist; wisp enforces it)"
+      else
+        echo "  ✓ network: a limited environment's policy was applied (empty allowlist; spritzer stores it, does not enforce it)"
+      fi
       printf '%s' "$ev" | grep -q '"stage":"turn"' || fail "no turn stage — nothing ran in the sandbox"
       printf '%s' "$ev" | grep -qF 'stop_reason\":\"end_turn' \
         || fail "the turn did not end with end_turn"
       printf '%s' "$ev" | grep -qF "fixture:artifact:$nonce:writes=1" \
         || fail "the fixture never reported writing its artifact"
-      # And the artifact is on a spritzer pod, not somewhere fountain made up:
-      # read it back out of the sprite with kubectl, around fountain entirely.
+      # And the artifact is on the sprite, not somewhere fountain made up.
+      # On wisp: read it back through the endpoint's filesystem API with the
+      # token from its Secret, around fountain entirely. The token goes into a
+      # curl header and nowhere else; it is never echoed.
+      if [ "$plane" = "wisp" ]; then
+        endpoint="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -r '.metadata.annotations["fountain-ops/sprites-base-url"] // empty')"
+        tokenSecret="$(kubectl get deploy fountain -n "{{ns}}" -o json | jq -r '.metadata.annotations["fountain-ops/sprites-token-secret"] // "fountain-sprites-token"')"
+        spritesToken="$(kubectl get secret "$tokenSecret" -n "{{ns}}" -o jsonpath='{.data.SPRITES_TOKEN}' | base64 -d)"
+        sprite="$(curl -s "$base/api/sandboxes" -H "authorization: Bearer $key" \
+          | jq -r --arg a "$agent" '[.data[] | select(.agent_id == $a)] | sort_by(.inserted_at) | last | .sprite_name // empty')"
+        [ -n "$sprite" ] || fail "fountain lists no sandbox for the fixture agent"
+        got="$(curl -s -H "Authorization: Bearer $spritesToken" "$endpoint/v1/sprites/$sprite/fs/list?path=/home/sprite/.fountain-acp-fixture" \
+          | jq -r --arg n "$nonce" '(.entries // .files // .)[]? | (.name // .path // empty) | select(endswith("-" + $n + ".txt"))' | head -n1)"
+        [ -n "$got" ] || fail "wisp sprite $sprite holds no artifact for nonce $nonce"
+        got="$(curl -s -H "Authorization: Bearer $spritesToken" "$endpoint/v1/sprites/$sprite/fs/read?path=/home/sprite/.fountain-acp-fixture/${got##*/}")"
+        unset spritesToken
+        [ "$got" = "$nonce" ] || fail "the artifact on wisp sprite $sprite does not hold the nonce"
+        echo "  ✓ fixture: a turn completed (end_turn) on wisp sprite $sprite at $endpoint,"
+        echo "    and its artifact reads back through wisp's filesystem API. ACP end to end, no model."
+        exit 0
+      fi
+      # On spritzer: read it back out of the sprite pod with kubectl.
       found=""
       for p in $(kubectl get pods -n "{{ns}}" -o name | grep '^pod/sprite-' || true); do
         got="$(kubectl exec -n "{{ns}}" "$p" -c sprite -- sh -c "cat /home/sprite/.fountain-acp-fixture/*-$nonce.txt" 2>/dev/null || true)"

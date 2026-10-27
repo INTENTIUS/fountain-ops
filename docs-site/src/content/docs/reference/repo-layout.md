@@ -18,6 +18,7 @@ e2e-k8s/pipeline.ts  the kubernetes-target loop, on merges and on demand
 image-pin/pipeline.ts  the weekly check that fountain's pin is the current release
 workflows/shared.ts  pins the workflows share
 ops/               the deploy Op, for behold's Run button
+box-check/         a chant Box, applied by `just verify-box`; its own package, on chant 0.90.0
 scripts/local/     cluster lifecycle, where behold looks for it
 docs-site/         this site
 src/

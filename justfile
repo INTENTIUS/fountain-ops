@@ -683,6 +683,14 @@ e2e:
       || { echo "$out" | tail -25; fail "no completed turn on a spritzer pod — #91 is open again"; }
     printf '%s\n' "$out" | grep -E "✓|pod" | sed 's/^/  /'
 
+    # The same fixture, declared as a consumer does: chant's Box composite,
+    # built, applied with fountainApply and run with fountainRun (chant#2705).
+    step "a chant Box applies, provisions and runs its setup script"
+    out="$(just verify-box "$email" 2>&1 || true)"
+    printf '%s\n' "$out" | grep -q "✓ box: machine still Running" \
+      || { echo "$out" | tail -25; fail "the chant Box did not apply, provision and stay up"; }
+    printf '%s\n' "$out" | grep "✓" | sed 's/^/  /'
+
     step "a real API server accepts every seam"
     just crds >/dev/null
     just dry-run --param postgres=cnpg --param backups=barman-pitr \
@@ -1407,6 +1415,113 @@ verify-conversation EMAIL MODE="plumbing": _require-cluster
         || fail "no result event — the turn ran but no model replied"
       echo "  ✓ strict: a model replied"
     fi
+
+# Prove a chant Box provisions: apply it, open a conversation, read it back.
+#
+# verify-conversation creates its Environment and Agent with curl. This one
+# declares them the way a consumer does, with the `Box` composite from
+# @intentius/chant-lexicon-fountain (chant#2705), builds the manifest with
+# chant, applies it with `fountainApply` and opens a conversation with
+# `fountainRun`. box-check/ is its own small project, pinned apart from the
+# root, whose k8s lexicons are on an older chant.
+#
+# The Box is the studio shape: an app repo cloned to /workspace/app, a setup
+# script, a persistent agent, `limited` networking with an empty allowlist. It
+# runs fountain's ACP fixture, so like `verify-conversation fixture` it needs
+# dataPlane=spritzer in container mode and --param acpFixtureUserId for the
+# account. What it asserts:
+#
+#   - the apply created the Environment and the Agent
+#   - the turn ended `completed`, and fountainRun called it persistent
+#   - the setup script's marker and the clone are on a sprite pod, read with
+#     kubectl around fountain entirely
+#   - that pod is still Running after the run returned: a Box's machine
+#     outlives the conversation
+#
+# Tears its agent, environment and conversation down on the way out.
+[doc("Prove a chant Box applies and provisions: fountainApply, fountainRun, marker read back.")]
+verify-box EMAIL: _require-cluster
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${FOUNTAIN_PASSWORD:?set FOUNTAIN_PASSWORD to the password for this account}"
+    fail() { echo "  ✗ $1" >&2; exit 1; }
+
+    dep="$(kubectl get deploy fountain -n "{{ns}}" -o json)"
+    plane="$(printf '%s' "$dep" | jq -r '.metadata.annotations["fountain-ops/data-plane"] // empty')"
+    exec_mode="$(printf '%s' "$dep" | jq -r '.metadata.annotations["fountain-ops/spritzer-exec"] // "interpreter"')"
+    if [ "$plane" != "spritzer" ] || [ "$exec_mode" != "container" ]; then
+      echo "  ✗ verify-box runs fountain's ACP fixture on a spritzer pod, so it needs" >&2
+      echo "    dataPlane=spritzer in container mode and --param acpFixtureUserId." >&2
+      exit 2
+    fi
+
+    [ -d box-check/node_modules ] || npm ci --prefix box-check --no-audit --no-fund >/dev/null
+    (cd box-check && npx chant build src -o dist/box.yaml --format yaml >/dev/null 2>&1) \
+      || fail "the Box did not build"
+
+    kubectl port-forward -n "{{ns}}" svc/fountain 14002:80 >/dev/null 2>&1 &
+    pf=$!
+    disown "$pf"
+    base=http://localhost:14002
+    key=""; conv=""
+    cleanup() {
+      if [ -n "$key" ]; then
+        auth="authorization: Bearer $key"
+        [ -n "$conv" ] && curl -s -o /dev/null -X POST "$base/api/conversations/$conv/terminate" -H "$auth" || true
+        a="$(curl -s "$base/api/agents?search=box-check" -H "$auth" | jq -r '.data[]? | select(.name == "box-check") | .id' || true)"
+        [ -n "$a" ] && curl -s -o /dev/null -X DELETE "$base/api/agents/$a" -H "$auth" || true
+        e="$(curl -s "$base/api/environments" -H "$auth" | jq -r '.data[]? | select(.name == "box-check-env") | .id' || true)"
+        [ -n "$e" ] && curl -s -o /dev/null -X DELETE "$base/api/environments/$e" -H "$auth" || true
+      fi
+      kill $pf 2>/dev/null || true
+    }
+    trap cleanup EXIT
+    for _ in $(seq 1 30); do curl -fs -o /dev/null -m 2 "$base/health" && break || sleep 1; done
+
+    creds="$(jq -nc --arg e "{{EMAIL}}" --arg p "$FOUNTAIN_PASSWORD" '{email: $e, password: $p}')"
+    key="$(curl -s -X POST "$base/api/auth/token" -H 'content-type: application/json' -d "$creds" | jq -r '.api_key // empty')"
+    [ -n "$key" ] || fail "could not get an API key for {{EMAIL}} — is it registered and verified?"
+
+    nonce="$( (uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid) | tr 'A-F' 'a-f')"
+    out="$(cd box-check && FOUNTAIN_ENDPOINT="$base" FOUNTAIN_TOKEN="$key" TSX_DISABLE_CACHE=1 npx tsx run.ts "$nonce" 2>&1)" \
+      || { printf '%s\n' "$out" | tail -20 >&2; fail "fountainApply or fountainRun threw"; }
+    apply="$(printf '%s\n' "$out" | grep '^{"apply"' | tail -1)"
+    run="$(printf '%s\n' "$out" | grep '^{"run"' | tail -1)"
+    conv="$(printf '%s' "$run" | jq -r '.run.conversationId // empty')"
+
+    for r in Environment/box-check-env Agent/box-check; do
+      printf '%s' "$apply" | jq -e --arg r "$r" '.apply | (.created + .updated) | index($r)' >/dev/null \
+        || fail "fountainApply did not apply $r: $apply"
+    done
+    echo "  ✓ fountainApply: $(printf '%s' "$apply" | jq -c '.apply | {created, updated}')"
+
+    printf '%s' "$run" | jq -e '.run.status == "completed" and .run.persistent and (.run.terminatedByDeadline | not)' >/dev/null \
+      || fail "the turn did not complete on a persistent machine: $run"
+    echo "  ✓ fountainRun: conversation $conv, turn completed, persistent"
+
+    ev="$(curl -sN --max-time 20 "$base/api/conversations/$conv/stream?wait=false" -H "authorization: Bearer $key")"
+    for s in network clone setup; do
+      printf '%s' "$ev" | grep "\"stage\":\"$s\"" | grep -q '"state":"done"' || fail "the $s stage did not finish"
+    done
+    echo "  ✓ provision: network (limited, empty allowlist), clone and setup all done"
+
+    found=""
+    for p in $(kubectl get pods -n "{{ns}}" -o name | grep '^pod/sprite-' || true); do
+      if kubectl exec -n "{{ns}}" "$p" -c sprite -- sh -c \
+           "grep -q 'box-check setup ran' /home/sprite/box-check-marker.txt && test -f /workspace/app/README && grep -qx '$nonce' /home/sprite/.fountain-acp-fixture/*-$nonce.txt" \
+           >/dev/null 2>&1; then
+        found="${p#pod/}"; break
+      fi
+    done
+    [ -n "$found" ] || fail "no sprite pod holds the setup marker, the clone and the turn's artifact"
+    echo "  ✓ sprite pod $found: $(kubectl exec -n "{{ns}}" "$found" -c sprite -- cat /home/sprite/box-check-marker.txt)"
+
+    sleep 5
+    phase="$(kubectl get pod -n "{{ns}}" "$found" -o jsonpath='{.status.phase}')"
+    st="$(curl -s "$base/api/conversations/$conv" -H "authorization: Bearer $key" | jq -r '.data.status')"
+    [ "$phase" = "Running" ] || fail "the Box's machine is $phase after the run, not Running"
+    [ "$st" = "idle" ] || fail "the conversation is $st after the run, not idle"
+    echo "  ✓ box: machine still Running and conversation idle after fountainRun returned"
 
 # Print MASTER_SECRETS_KEY, so it can be kept somewhere the cluster is not.
 [doc("Print MASTER_SECRETS_KEY, so it can be kept somewhere the cluster is not.")]

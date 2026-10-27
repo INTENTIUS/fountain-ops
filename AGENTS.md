@@ -41,6 +41,9 @@ anything written in the present tense anywhere else, this file included.
   fountain refused it: spritzer#26). spritzer stores the policy but does not
   enforce it, so a limited sandbox can still reach anything locally. `just e2e`
   runs its fixture turn on a limited Environment with an empty allowlist.
+- `box-check/` is its own npm project (chant `0.90.0` and its fountain
+  lexicon), apart from the root's older chant. `just verify-box` installs it
+  on first use; `just check` does not look inside it.
 
 ## Things that will waste your time if edited directly
 
